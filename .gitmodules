@@ -1,6 +1,3 @@
-[submodule "back-end/src/shared"]
-	path = back-end/src/shared
-	url = https://github.com/pfrances/transcendance_shared.git
-[submodule "front-end/app/shared"]
-	path = front-end/app/shared
+[submodule "src/shared"]
+	path = src/shared
 	url = https://github.com/pfrances/transcendance_shared.git
