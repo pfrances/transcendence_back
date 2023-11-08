@@ -9,6 +9,7 @@ import {WebSocketModule} from './webSocket/websocket.module';
 import {FriendModule} from './friend/friend.module';
 import {WsSocketModule} from './webSocket/WsSocket/WsSocket.module';
 import {WsConnectionModule} from './webSocket/WsConnection/WsConnection.module';
+import {JwtModule} from './jwt/jwt.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import {WsConnectionModule} from './webSocket/WsConnection/WsConnection.module';
     ChatModule,
     InvitationModule,
     FriendModule,
+    JwtModule,
   ],
 })
 export class AppModule {}

@@ -1,26 +1,29 @@
 import {CanActivate, ExecutionContext, Injectable} from '@nestjs/common';
 import {AuthGuard} from '@nestjs/passport';
 import {JwtTokenPayload} from '../interface';
-import {AuthService} from '../auth.service';
 import {Observable} from 'rxjs';
+import {JwtService} from 'src/jwt/jwt.service';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') implements CanActivate {
-  constructor() {
+  constructor(private readonly jwt: JwtService) {
     super();
   }
 
   canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
     if (context.getType() === 'http') {
-      return super.canActivate(context);
+      const req = context.switchToHttp().getRequest();
+      const token = req?.headers?.authorization?.split(' ')[1] ?? req?.headers?.access_token;
+      req.user = this.validateToken(token, 'http');
+      return true;
     } else if (context.getType() === 'ws') {
       const client = context.switchToWs().getClient();
       const token = client?.handshake?.auth?.token ?? client?.handshake?.headers?.access_token;
-      client.handshake.auth.payload = JwtAuthGuard.validateToken(token, 'ws');
+      client.handshake.auth.payload = this.validateToken(token, 'ws');
       return true;
     }
   }
-  static validateToken(token: string, ctx: 'http' | 'ws' = 'http'): JwtTokenPayload {
-    return AuthService.verifyAndDecodeAuthToken(token, ctx);
+  validateToken(token: string, ctx: 'http' | 'ws' = 'http'): JwtTokenPayload {
+    return this.jwt.verifyAndDecodeAuthToken(token, ctx);
   }
 }

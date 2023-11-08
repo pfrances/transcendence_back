@@ -1,6 +1,6 @@
 import {Body, Controller, Get, Post, Req, UnauthorizedException, UseGuards} from '@nestjs/common';
 import {AuthService} from './auth.service';
-import {FortyTwoAuthGuard} from './guard';
+import {FortyTwoAuthGuard, JwtAuthGuard} from './guard';
 import {SignInDto, SignUpDto} from './dto';
 import {HttpAuth, HttpAuth42, HttpSignIn, HttpSignUp} from 'src/shared/HttpEndpoints/auth';
 
@@ -30,5 +30,11 @@ export class AuthController {
   async signin(@Body() dto: SignInDto): Promise<HttpSignIn.resTemplate> {
     const authToken = await this.authService.signin(dto);
     return {authToken};
+  }
+
+  @Get('test')
+  @UseGuards(JwtAuthGuard)
+  async test(): Promise<string> {
+    return 'test';
   }
 }
