@@ -1,7 +1,7 @@
 import {IsNotEmpty, IsString} from 'class-validator';
-import {AuthSignInData} from 'src/shared/HttpEndpoints/auth';
+import {HttpSignIn} from 'src/shared/HttpEndpoints/auth';
 
-export class SignInDto implements AuthSignInData {
+export class SignInDto implements HttpSignIn.reqTemplate {
   @IsString()
   @IsNotEmpty()
   nickname: string;

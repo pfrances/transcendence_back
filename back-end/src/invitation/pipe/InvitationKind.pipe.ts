@@ -2,7 +2,7 @@ import {PipeTransform, Injectable} from '@nestjs/common';
 import {NotInEnumException} from 'src/customException';
 import {InvitationKindEnum_Url} from '../enum';
 import {InvitationKind} from '@prisma/client';
-import {InvitationKind_Url} from 'src/shared/base_types';
+import {InvitationKind_Url} from 'src/shared/HttpEndpoints/types';
 
 @Injectable()
 export class InvitationKindPipe implements PipeTransform {

@@ -1,5 +1,5 @@
-import {JoinChatData} from 'src/shared/HttpEndpoints/chat/joinChat';
+import {HttpJoinChat} from 'src/shared/HttpEndpoints/chat';
 
-export class JoinChatDto implements JoinChatData {
+export class JoinChatDto implements HttpJoinChat.reqTemplate {
   password?: string;
 }

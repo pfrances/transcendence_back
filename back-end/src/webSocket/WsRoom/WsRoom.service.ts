@@ -1,42 +1,42 @@
-import {Injectable, Scope} from '@nestjs/common';
+import {Injectable} from '@nestjs/common';
 import {BroadcastMessageInRoom, JoinLeaveRoom, RoomName, SendMessageInRoom} from './interface';
-import {SocketMonitorService} from '../socketMonitor/socketMonitor.service';
 import {Server} from 'socket.io';
-import {SendWsMessageToClient} from '../socketMonitor/interface/socket.interface';
+import {WsSocketService} from '../WsSocket/WsSocket.service';
+import {WsEvents_FromServer} from 'src/shared/WsEvents';
 
-@Injectable({scope: Scope.DEFAULT})
-export class RoomMonitorService {
-  constructor(private readonly socketMonitor: SocketMonitorService) {}
-  private roomsMap = new Map<string, number[]>();
-  private server: Server;
+@Injectable()
+export class WsRoomService {
+  constructor() {}
+  private static roomsMap = new Map<string, number[]>();
+  private static server: Server;
 
-  setServer(server: Server) {
-    this.server = server;
+  static setServer(server: Server) {
+    WsRoomService.server = server;
   }
 
-  private getNbClientsInRoom(roomName: string) {
-    return this.roomsMap.get(roomName)?.length ?? 0;
+  private getNbClientsInRoom(roomName: string): number {
+    return WsRoomService.roomsMap.get(roomName)?.length ?? 0;
   }
 
   private addUserToRoomMap(roomName: string, userId: number): void {
-    const users = this.roomsMap.get(roomName) ?? [];
+    const users = WsRoomService.roomsMap.get(roomName) ?? [];
     users.push(userId);
-    this.roomsMap.set(roomName, users);
+    WsRoomService.roomsMap.set(roomName, users);
   }
 
   private removeUserFromRoomMap(roomName: string, userId: number): void {
-    const users = this.roomsMap.get(roomName) ?? [];
+    const users = WsRoomService.roomsMap.get(roomName) ?? [];
     const index = users.indexOf(userId);
     if (index >= 0) {
       users.splice(index, 1);
-      this.roomsMap.set(roomName, users);
-      if (users.length === 0) this.deleteServerRoom(roomName);
+      if (users.length > 0) WsRoomService.roomsMap.set(roomName, users);
+      else this.deleteServerRoom(roomName);
     }
   }
 
   private deleteServerRoom(roomName: string): void {
-    this.server.sockets.adapter.rooms.delete(roomName);
-    this.roomsMap.delete(roomName);
+    WsRoomService.server.sockets.adapter.rooms.delete(roomName);
+    WsRoomService.roomsMap.delete(roomName);
   }
 
   private getRoomNameFromTemplate(template: RoomName): string {
@@ -44,7 +44,7 @@ export class RoomMonitorService {
   }
 
   addUserToRoom(data: JoinLeaveRoom): void {
-    const client = this.socketMonitor.getClientSocketByUserId(data.userId);
+    const client = WsSocketService.getClientSocketByUserId(data.userId);
     if (client) {
       const roomName = this.getRoomNameFromTemplate(data);
       client.join(roomName);
@@ -53,7 +53,7 @@ export class RoomMonitorService {
   }
 
   removeUserFromRoom(data: JoinLeaveRoom): void {
-    const client = this.socketMonitor.getClientSocketByUserId(data.userId);
+    const client = WsSocketService.getClientSocketByUserId(data.userId);
     if (client) {
       const roomName = this.getRoomNameFromTemplate(data);
       client.leave(roomName);
@@ -63,7 +63,7 @@ export class RoomMonitorService {
 
   sendMessageInRoom(data: SendMessageInRoom): void {
     const roomName = this.getRoomNameFromTemplate(data);
-    const socket = this.socketMonitor.getClientSocketByUserId(data.senderId) ?? this.server;
+    const socket = WsSocketService.getClientSocketByUserId(data.senderId) ?? WsRoomService.server;
     if (this.getNbClientsInRoom(roomName) > 0) {
       socket.to(roomName).emit(data.eventName, data.message);
     }
@@ -72,11 +72,11 @@ export class RoomMonitorService {
   broadcastMessageInRoom(data: BroadcastMessageInRoom): void {
     const roomName = this.getRoomNameFromTemplate(data);
     if (this.getNbClientsInRoom(roomName) > 0)
-      this.server.to(roomName).emit(data.eventName, data.message);
+      WsRoomService.server.to(roomName).emit(data.eventName, data.message);
   }
 
-  sendMessageToUser(dto: SendWsMessageToClient): void {
-    const client = this.socketMonitor.getClientSocketByUserId(dto.userId);
+  sendMessageToUser(userId: number, dto: WsEvents_FromServer.template): void {
+    const client = WsSocketService.getClientSocketByUserId(userId);
     if (client) {
       client.emit(dto.eventName, dto.message);
     }

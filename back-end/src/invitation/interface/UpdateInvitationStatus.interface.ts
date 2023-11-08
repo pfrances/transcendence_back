@@ -1,6 +1,6 @@
 import {InvitationKind, InvitationStatus} from '@prisma/client';
 import {BadRequestException} from '@nestjs/common';
-import {InvitationAction_Url} from 'src/shared/base_types';
+import {InvitationAction_Url} from 'src/shared/HttpEndpoints/types';
 
 abstract class UpdateInvitationBase {
   invitationId: number;

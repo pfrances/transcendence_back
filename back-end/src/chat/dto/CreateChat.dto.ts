@@ -1,7 +1,7 @@
 import {IsNotEmpty, IsOptional, IsString, IsUrl} from 'class-validator';
-import {CreateChatData} from 'src/shared/HttpEndpoints/chat';
+import {HttpCreateChat} from 'src/shared/HttpEndpoints/chat';
 
-export class CreateChatDto implements CreateChatData {
+export class CreateChatDto implements HttpCreateChat.reqTemplate {
   @IsString()
   @IsNotEmpty()
   name: string;

@@ -2,32 +2,26 @@ import {Body, Controller, Delete, Get, UseGuards} from '@nestjs/common';
 import {JwtAuthGuard} from 'src/auth/guard';
 import {FriendService} from './friend.service';
 import {GetInfoFromJwt} from 'src/decorator';
-import {
-  FriendEndPointBase,
-  GetFriendProfilesEndPoint,
-  GetFriendProfilesResponse,
-  RemoveFriendEndPoint,
-  RemoveFriendResponse,
-} from 'src/shared/HttpEndpoints/friend';
 import {RemoveFriendDto} from './dto';
+import {HttpFriend, HttpGetFriendsList, HttpRemoveFriend} from 'src/shared/HttpEndpoints/friend';
 
-@Controller(FriendEndPointBase)
+@Controller(HttpFriend.endPointBase)
 @UseGuards(JwtAuthGuard)
 export class FriendController {
   constructor(private readonly friend: FriendService) {}
 
-  @Get(GetFriendProfilesEndPoint)
+  @Get(HttpGetFriendsList.endPoint)
   getUserFriendProfiles(
     @GetInfoFromJwt('userId') userId: number,
-  ): Promise<GetFriendProfilesResponse> {
+  ): Promise<HttpGetFriendsList.resTemplate> {
     return this.friend.getUserFriendProfilesList(userId);
   }
 
-  @Delete(RemoveFriendEndPoint)
+  @Delete(HttpRemoveFriend.endPoint)
   deleteFriend(
     @GetInfoFromJwt('userId') userId: number,
     @Body() dto: RemoveFriendDto,
-  ): Promise<RemoveFriendResponse> {
+  ): Promise<HttpRemoveFriend.resTemplate> {
     return this.friend.unsetRelationship({userId, targetUserId: dto.friendId});
   }
 }

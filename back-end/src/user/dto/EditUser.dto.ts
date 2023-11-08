@@ -1,7 +1,7 @@
 import {IsEmail, IsOptional, IsString, IsUrl} from 'class-validator';
-import {UserEditUserData} from 'src/shared/HttpEndpoints/user';
+import {HttpEditMe} from 'src/shared/HttpEndpoints/user';
 
-export class EditUserDto implements UserEditUserData {
+export class EditUserDto implements HttpEditMe.reqTemplate {
   @IsEmail()
   @IsOptional()
   email?: string;

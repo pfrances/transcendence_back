@@ -1,15 +1,23 @@
 import {ConflictException, Injectable} from '@nestjs/common';
 import {PrismaService} from 'src/prisma/prisma.service';
 import {SetRelationship} from './interface';
-import {RoomMonitorService} from 'src/webSocket/room/roomMonitor.service';
-import {FriendPublicProfilesList, UserPublicProfile} from 'src/shared/base_interfaces';
+import {FriendPublicProfilesList} from 'src/shared/HttpEndpoints/interfaces';
+import {WsLeftFriend, WsNewFriend} from 'src/shared/WsEvents/friend';
+import {RoomNamePrefix} from 'src/webSocket/WsRoom/interface';
+import {
+  WsFriendConnection,
+  WsFriendDisconnection,
+  WsFriend_FromServer,
+} from 'src/shared/WsEvents/friend';
+import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
 
 @Injectable()
 export class FriendService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly room: RoomMonitorService,
+    private readonly wsRoom: WsRoomService,
   ) {}
+  private readonly prefix: RoomNamePrefix = 'Friend_Info-';
 
   async getUserFriendUserIds(userId: number): Promise<number[]> {
     const profile = await this.prisma.profile.findUnique({
@@ -27,79 +35,64 @@ export class FriendService {
     return {friendsProfiles: userProfile.friendsProfiles};
   }
 
-  private async setSingleRelationship(userId: number, targetFriendId: number): Promise<void> {
+  private async setSingleRelationship({userId, targetUserId}: SetRelationship): Promise<void> {
     await this.prisma.profile.update({
       where: {userId: userId},
-      data: {friendUserIds: {push: targetFriendId}},
+      data: {friendUserIds: {push: targetUserId}},
     });
-    this.room.addUserToRoom({prefix: 'Friend_Info-', roomId: targetFriendId, userId: userId});
-    const wsMessage = `You are now friend with the user ${targetFriendId}`;
-    this.room.sendMessageToUser({userId: userId, eventName: 'newFriend', message: wsMessage});
+    this.handleWsFriendEvent(new WsNewFriend.Dto({friendId: targetUserId}));
   }
 
   async setRelationship({
     userId,
     targetUserId,
   }: SetRelationship): Promise<FriendPublicProfilesList> {
-    await this.setSingleRelationship(userId, targetUserId);
-    await this.setSingleRelationship(targetUserId, userId);
+    await this.setSingleRelationship({userId, targetUserId});
+    await this.setSingleRelationship({targetUserId, userId});
     return this.getUserFriendProfilesList(userId);
   }
 
-  private async unsetSingleRelationship(userId, targetUserId): Promise<void> {
+  private async unsetSingleRelationship({userId, targetUserId}: SetRelationship): Promise<void> {
     const user1FriendIds = await this.getUserFriendUserIds(userId);
     await this.prisma.profile.update({
       where: {userId: userId},
       data: {friendUserIds: {set: user1FriendIds.filter(id => id !== targetUserId)}},
     });
-    this.room.removeUserFromRoom({prefix: 'Friend_Info-', roomId: targetUserId, userId: userId});
-    const wsMessage = `You are no longer friend with the user ${targetUserId}`;
-    this.room.sendMessageToUser({userId: userId, eventName: 'leftFriend', message: wsMessage});
+    this.handleWsFriendEvent(new WsLeftFriend.Dto({friendId: targetUserId}));
   }
+
   async unsetRelationship({
     userId,
     targetUserId,
   }: SetRelationship): Promise<FriendPublicProfilesList> {
     if (userId === targetUserId)
       throw new ConflictException('userId and targetUserId are the same');
-    await this.unsetSingleRelationship(userId, targetUserId);
-    await this.unsetSingleRelationship(targetUserId, userId);
+    await this.unsetSingleRelationship({userId, targetUserId});
+    await this.unsetSingleRelationship({targetUserId, userId});
     return this.getUserFriendProfilesList(userId);
   }
 
-  async addUserToAllFriendsRooms(userId: number, friendIds: number[]): Promise<void> {
-    friendIds.forEach(roomId => {
-      this.room.addUserToRoom({userId, prefix: 'Friend_Info-', roomId});
-    });
-  }
-
-  async removeUserFromAllFriendsRooms(userId: number, friendIds: number[]): Promise<void> {
-    friendIds.forEach(roomId => {
-      this.room.removeUserFromRoom({userId, prefix: 'Friend_Info-', roomId});
-    });
+  handleWsFriendEvent(eventDto: WsFriend_FromServer.template): void {
+    const prefix = this.prefix;
+    const roomId = eventDto.message.friendId;
+    this.wsRoom.broadcastMessageInRoom({prefix, roomId, ...eventDto});
   }
 
   async handleUserConnection(userId: number): Promise<void> {
+    const prefix = this.prefix;
     const friendIds = await this.getUserFriendUserIds(userId);
-    this.room.sendMessageInRoom({
-      prefix: 'Friend_Info-',
-      roomId: userId,
-      eventName: 'friendConnection',
-      message: `the user ${userId} is now online`,
-      senderId: userId,
+    this.handleWsFriendEvent(new WsFriendConnection.Dto({friendId: userId}));
+    friendIds.forEach(roomId => {
+      this.wsRoom.addUserToRoom({userId, prefix, roomId});
     });
-    this.addUserToAllFriendsRooms(userId, friendIds);
   }
 
   async handleUserDisconnection(userId: number): Promise<void> {
+    const prefix = this.prefix;
     const friendIds = await this.getUserFriendUserIds(userId);
-    this.room.sendMessageInRoom({
-      prefix: 'Friend_Info-',
-      roomId: userId,
-      eventName: 'friendDisconnection',
-      message: `the user ${userId} is now offline`,
-      senderId: userId,
+    this.handleWsFriendEvent(new WsFriendDisconnection.Dto({friendId: userId}));
+    friendIds.forEach(roomId => {
+      this.wsRoom.removeUserFromRoom({userId, prefix, roomId});
     });
-    this.removeUserFromAllFriendsRooms(userId, friendIds);
   }
 }

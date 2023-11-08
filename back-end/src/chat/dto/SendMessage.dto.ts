@@ -1,7 +1,7 @@
 import {IsNotEmpty, IsNumber, IsString} from 'class-validator';
-import {SendMessageData} from 'src/shared/WsEvents/chat';
+import {WsSendMessage} from 'src/shared/WsEvents/chat';
 
-export class SendMessageDto implements SendMessageData {
+export class SendMessageDto implements WsSendMessage.eventMessageTemplate {
   @IsNumber()
   chatId: number;
 

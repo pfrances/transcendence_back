@@ -6,9 +6,9 @@ import {UserModule} from './user/user.module';
 import {ChatModule} from './chat/chat.module';
 import {InvitationModule} from './invitation/invitation.module';
 import {WebSocketModule} from './webSocket/websocket.module';
-import {ConnectionMonitorModule} from './webSocket/connection/connectionMonitor.module';
-import {SocketMonitorModule} from './webSocket/socketMonitor/socketMonitor.module';
 import {FriendModule} from './friend/friend.module';
+import {WsSocketModule} from './webSocket/WsSocket/WsSocket.module';
+import {WsConnectionModule} from './webSocket/WsConnection/WsConnection.module';
 
 @Module({
   imports: [
@@ -18,8 +18,8 @@ import {FriendModule} from './friend/friend.module';
     }),
     PrismaModule,
     WebSocketModule,
-    SocketMonitorModule,
-    ConnectionMonitorModule,
+    WsSocketModule,
+    WsConnectionModule,
     AuthModule,
     UserModule,
     ChatModule,

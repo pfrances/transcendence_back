@@ -1,8 +1,8 @@
 import {Role} from '@prisma/client';
 import {IsArray, IsNotEmpty, IsOptional} from 'class-validator';
-import {UpdateChatData} from 'src/shared/HttpEndpoints/chat';
+import {HttpUpdateChat} from 'src/shared/HttpEndpoints/chat';
 
-export class UpdateChatDto implements UpdateChatData {
+export class UpdateChatDto implements HttpUpdateChat.reqTemplate {
   @IsOptional()
   @IsNotEmpty()
   name?: string;

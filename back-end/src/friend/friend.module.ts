@@ -2,12 +2,12 @@ import {Module} from '@nestjs/common';
 import {FriendService} from './friend.service';
 import {FriendController} from './friend.controller';
 import {UserModule} from 'src/user/user.module';
-import {RoomMonitorModule} from 'src/webSocket/room/roomMonitor.module';
+import {WsRoomModule} from 'src/webSocket/WsRoom/WsRoom.module';
 
 @Module({
-  imports: [RoomMonitorModule, UserModule],
+  imports: [WsRoomModule, UserModule],
   providers: [FriendService],
-  exports: [FriendService],
   controllers: [FriendController],
+  exports: [FriendService],
 })
 export class FriendModule {}

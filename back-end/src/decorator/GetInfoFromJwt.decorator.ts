@@ -1,6 +1,6 @@
 import {ExecutionContext, UnauthorizedException, createParamDecorator} from '@nestjs/common';
 import {WsException} from '@nestjs/websockets';
-import {AuthService} from 'src/auth/auth.service';
+import {WsSocketService} from 'src/webSocket/WsSocket/WsSocket.service';
 
 export const GetInfoFromJwt = createParamDecorator(
   (data: 'userId' | 'nickname' | undefined, ctx: ExecutionContext) => {
@@ -11,9 +11,8 @@ export const GetInfoFromJwt = createParamDecorator(
       if (!userInfo) throw new UnauthorizedException('Jwt is missing');
     } else if (ctxType === 'ws') {
       const client = ctx.switchToWs().getClient();
-      const token = client?.handshake?.auth?.token;
-      if (!token) throw new WsException('Jwt is missing');
-      userInfo = AuthService.verifyAndDecodeAuthToken(token, 'ws');
+      userInfo = WsSocketService.getJwtInfoByClientSocketId(client?.id);
+      if (!userInfo) throw new WsException('Jwt is missing');
     }
 
     const value = data ? userInfo[data] : userInfo;

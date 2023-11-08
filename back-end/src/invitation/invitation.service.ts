@@ -4,9 +4,9 @@ import {SendInvitation, UpdateInvitationStatus} from './interface';
 import {ChatService} from 'src/chat/chat.service';
 import {FriendService} from 'src/friend/friend.service';
 import {HandleUpdatedInvitationRelatedEvent} from 'src/friend/interface/handleUpdatedInvitationRelatedEvent.template';
-import {SendInvitationReponse, UpdateInvitationReponse} from 'src/shared/HttpEndpoints/invitation';
-import {RoomMonitorService} from 'src/webSocket/room/roomMonitor.service';
-import {OnNewInvitationEvent} from 'src/shared/WsEvents/invitation';
+import {HttpSendInvitation, HttpUpdateInvitation} from 'src/shared/HttpEndpoints/invitation';
+import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
+import {WsInvitationUpdated, WsNewInvitation} from 'src/shared/WsEvents/invitation';
 
 @Injectable()
 export class InvitationsService {
@@ -14,7 +14,7 @@ export class InvitationsService {
     private readonly prisma: PrismaService,
     private readonly chat: ChatService,
     private readonly friend: FriendService,
-    private readonly room: RoomMonitorService,
+    private readonly wsRoom: WsRoomService,
   ) {}
 
   private async checkSentInvitation(data: SendInvitation): Promise<void> | never {
@@ -63,7 +63,7 @@ export class InvitationsService {
     if (pendingInvitation) throw new ConflictException('Invitation already sent');
   }
 
-  async sendInvitation(data: SendInvitation): Promise<SendInvitationReponse> {
+  async sendInvitation(data: SendInvitation): Promise<HttpSendInvitation.resTemplate> {
     await this.checkSentInvitation(data);
     const {senderId, receiverId, kind, targetChatId, targetGameId} = data;
     try {
@@ -79,12 +79,8 @@ export class InvitationsService {
           targetGameId: kind === 'GAME',
         },
       });
-      const WsMessage: OnNewInvitationEvent = invitation;
-      this.room.sendMessageToUser({
-        userId: receiverId,
-        eventName: 'newInvitation',
-        message: WsMessage,
-      });
+      const wsDto = new WsNewInvitation.Dto(invitation);
+      this.wsRoom.sendMessageToUser(invitation.receiverId, wsDto);
       return invitation;
     } catch (err) {
       throw new BadRequestException('No such user');
@@ -100,7 +96,9 @@ export class InvitationsService {
     }
   }
 
-  async updateInvitationStatus(data: UpdateInvitationStatus): Promise<UpdateInvitationReponse> {
+  async updateInvitationStatus(
+    data: UpdateInvitationStatus,
+  ): Promise<HttpUpdateInvitation.resTemplate> {
     const {targetStatus, kind, ...dataToSeach} = data;
     try {
       const invitation = await this.prisma.invitation.update({
@@ -116,20 +114,13 @@ export class InvitationsService {
           targetGameId: kind === 'GAME',
         },
       });
-      const dto = {...invitation, targetStatus, kind};
-      if (targetStatus === 'ACCEPTED') this.handleUpdatedInvitationRelatedEvent(dto);
-      this.room.sendMessageToUser({
-        userId: dto.senderId ? invitation.senderId : invitation.receiverId,
-        eventName:
-          targetStatus === 'ACCEPTED'
-            ? 'invitationAccepted'
-            : targetStatus === 'REFUSED'
-            ? 'invitationDeclined'
-            : 'invitationCanceled',
-        message: `the invitation ${
-          invitation.invitationId
-        } has been ${targetStatus.toLowerCase()}.`,
-      });
+      if (targetStatus === 'ACCEPTED')
+        this.handleUpdatedInvitationRelatedEvent({...invitation, targetStatus, kind});
+      const wsDto = WsInvitationUpdated.createInvitationUpdated(invitation);
+      this.wsRoom.sendMessageToUser(
+        targetStatus === 'CANCELED' ? invitation.receiverId : invitation.senderId,
+        wsDto,
+      );
       return invitation;
     } catch (err) {
       if (err instanceof HttpException) throw err;

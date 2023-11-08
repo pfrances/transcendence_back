@@ -12,81 +12,71 @@ import {
 } from '@nestjs/common';
 import {ChatService} from './chat.service';
 import {GetInfoFromJwt} from 'src/decorator';
-import {
-  ChatGetAllMessagesEndPoint,
-  ChatGetAllMessagesQuery,
-  CreateChatEndPoint,
-  CreateChatResponse,
-  GetAllMessageResponse,
-  GetChatInfoEndPoint,
-  GetChatInfoResponse,
-  JoinChatEndPoint_NEST,
-  JoinChatParam,
-  JoinChatRespone,
-  LeaveChatEndPoint_NEST,
-  LeaveChatParam,
-  LeaveChatRespone,
-  UpdateChatEndPoint_NEST,
-  UpdateChatParam,
-  UpdateChatRespone,
-} from 'src/shared/HttpEndpoints/chat/';
-import {ChatEndPointBase, GetChatInfoQuery} from 'src/shared/HttpEndpoints/chat';
 import {CreateChatDto, JoinChatDto, UpdateChatDto} from './dto';
 import {JwtAuthGuard} from 'src/auth/guard';
+import {
+  HttpChat,
+  HttpCreateChat,
+  HttpGetAllMessage,
+  HttpGetChatInfo,
+  HttpJoinChat,
+  HttpLeaveChat,
+  HttpUpdateChat,
+} from 'src/shared/HttpEndpoints/chat';
 
-@Controller(ChatEndPointBase)
+@Controller(HttpChat.endPointBase)
 @UseGuards(JwtAuthGuard)
 export class ChatController {
   constructor(private readonly chat: ChatService) {}
 
-  @Get(ChatGetAllMessagesEndPoint)
+  @Get(HttpGetAllMessage.endPoint)
   async getAllMessage(
     @GetInfoFromJwt('userId') userId: number,
-    @Query(ChatGetAllMessagesQuery.key, ParseIntPipe) chatId: number,
-  ): Promise<GetAllMessageResponse> {
+    @Query('chatId', ParseIntPipe) chatId: number,
+  ): Promise<HttpGetAllMessage.resTemplate> {
     return this.chat.getAllMessagesFromChatId(userId, chatId);
   }
 
-  @Post(CreateChatEndPoint)
+  @Post(HttpCreateChat.endPoint)
   async createChat(
     @GetInfoFromJwt('userId') userId: number,
     @Body() dto: CreateChatDto,
-  ): Promise<CreateChatResponse> {
+  ): Promise<HttpCreateChat.resTemplate> {
     return this.chat.createChat(userId, dto);
   }
 
-  @Get(GetChatInfoEndPoint)
+  @Get(HttpGetChatInfo.endPoint)
   async getChatInfo(
-    @Query(GetChatInfoQuery.key, ParseIntPipe) chatId: number,
-  ): Promise<GetChatInfoResponse> {
+    @Query('chatId', ParseIntPipe) chatId: number,
+  ): Promise<HttpGetChatInfo.resTemplate> {
     return this.chat.getChatInfo(chatId);
   }
 
-  @Post(JoinChatEndPoint_NEST)
+  @Post(HttpJoinChat.endPoint)
   async joinChat(
     @GetInfoFromJwt('userId') userId: number,
-    @Param(JoinChatParam, ParseIntPipe) chatId: number,
+    @Param('chatId', ParseIntPipe) chatId: number,
     @Body() dto: JoinChatDto,
-  ): Promise<JoinChatRespone> {
+  ): Promise<HttpJoinChat.resTemplate> {
     await this.chat.joinChat({userId, chatId, ...dto});
     return this.chat.getChatInfo(chatId);
   }
 
-  @Post(LeaveChatEndPoint_NEST)
+  @Post(HttpLeaveChat.endPoint)
   async leaveChat(
     @GetInfoFromJwt('userId') userId: number,
-    @Param(LeaveChatParam, ParseIntPipe) chatId: number,
-  ): Promise<LeaveChatRespone> {
+    @Param('chatId', ParseIntPipe) chatId: number,
+  ): Promise<HttpLeaveChat.resTemplate> {
     await this.chat.leaveChat({userId, chatId});
     return this.chat.getChatInfo(chatId);
   }
 
-  @Patch(UpdateChatEndPoint_NEST)
+  @Patch(HttpUpdateChat.endPoint)
   async updateChat(
     @GetInfoFromJwt('userId') userId: number,
-    @Param(UpdateChatParam, ParseIntPipe) chatId: number,
+    @Param('chatId', ParseIntPipe) chatId: number,
     @Body() dto: UpdateChatDto,
-  ): Promise<UpdateChatRespone> {
+  ): Promise<HttpUpdateChat.resTemplate> {
     if (!Object.keys(dto).length) throw new UnprocessableEntityException('no data to update');
     await this.chat.updateChat({...dto, userId, chatId});
     return this.chat.getChatInfo(chatId);

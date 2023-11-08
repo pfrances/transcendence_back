@@ -1,4 +1,4 @@
-import {WsEventName} from './src/shared/base_types';
+import {WsEvents} from './src/shared/WsEvents';
 
 const {io} = require('socket.io-client');
 const readline = require('readline');
@@ -22,7 +22,7 @@ fetch('http://localhost:3333/auth/signin', {
     const authToken = res.authToken;
     const socket = io('ws://localhost:3333/', {auth: {token: authToken}});
 
-    function getSocketMessageFromEvent(eventName: WsEventName) {
+    function getSocketMessageFromEvent(eventName: WsEvents.eventName) {
       socket.on(eventName, message => {
         console.log(`-----------${eventName}-----------`);
         console.log(message);
@@ -40,10 +40,10 @@ fetch('http://localhost:3333/auth/signin', {
     getSocketMessageFromEvent('newMessage');
     getSocketMessageFromEvent('newInvitation');
     getSocketMessageFromEvent('invitationAccepted');
+    getSocketMessageFromEvent('invitationCanceled');
     getSocketMessageFromEvent('invitationDeclined');
-    getSocketMessageFromEvent('invitationDeclined');
-    getSocketMessageFromEvent('userJoining');
-    getSocketMessageFromEvent('userLeaving');
+    getSocketMessageFromEvent('chatJoin');
+    getSocketMessageFromEvent('chatLeave');
 
     const rl = readline.createInterface({
       input: process.stdin,

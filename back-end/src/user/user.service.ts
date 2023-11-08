@@ -5,14 +5,14 @@ import {PrismaService} from 'src/prisma/prisma.service';
 import {CreateUserTemplate, GetUserTemplate} from './interface';
 import {SignInDto} from 'src/auth/dto';
 import {JwtTokenPayload} from 'src/auth/interface';
-import {UserEditUserResponse} from 'src/shared/HttpEndpoints/user';
-import {UserPublicProfile} from 'src/shared/base_interfaces';
+import {UserPublicProfile} from 'src/shared/HttpEndpoints/interfaces';
+import {HttpEditMe} from 'src/shared/HttpEndpoints/user';
 
 @Injectable()
 export class UserService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async editUserInfo(userInfo: GetUserTemplate, dto: EditUserDto): Promise<UserEditUserResponse> {
+  async editUserInfo(userInfo: GetUserTemplate, dto: EditUserDto): Promise<HttpEditMe.resTemplate> {
     try {
       if (dto.password) dto.password = await argon.hash(dto.password);
       const userModelInfo = {email: dto.email, password: dto.password};

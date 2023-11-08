@@ -2,41 +2,32 @@ import {Body, Controller, Get, Post, Req, UnauthorizedException, UseGuards} from
 import {AuthService} from './auth.service';
 import {FortyTwoAuthGuard} from './guard';
 import {SignInDto, SignUpDto} from './dto';
-import {
-  AuthEndPointBase,
-  AuthSignInEndPoint,
-  AuthSignInResponse,
-  AuthSignUpEndPoint,
-  AuthSignUpResponse,
-  Auth42CBEndPoint,
-  Auth42EndPoint,
-  Auth42Response,
-} from 'src/shared/HttpEndpoints/auth';
+import {HttpAuth, HttpAuth42, HttpSignIn, HttpSignUp} from 'src/shared/HttpEndpoints/auth';
 
-@Controller(AuthEndPointBase)
+@Controller(HttpAuth.endPointBase)
 export class AuthController {
   constructor(private authService: AuthService) {}
 
-  @Get(Auth42EndPoint)
+  @Get(HttpAuth42.endPoint)
   @UseGuards(FortyTwoAuthGuard)
   redirectTo42Auth(): never {
     throw new UnauthorizedException('Should not be here');
   }
 
-  @Get(Auth42CBEndPoint)
+  @Get(HttpAuth42.endPoint_CB)
   @UseGuards(FortyTwoAuthGuard)
-  async handle42Callback(@Req() req): Promise<Auth42Response> {
+  async handle42Callback(@Req() req): Promise<HttpAuth.Auth42.resTemplate> {
     const authToken = await this.authService.createAuthToken(req.user);
     return {authToken};
   }
 
-  @Post(AuthSignUpEndPoint)
-  async signup(@Body() dto: SignUpDto): Promise<AuthSignUpResponse> {
+  @Post(HttpSignUp.endPoint)
+  async signup(@Body() dto: SignUpDto): Promise<HttpSignUp.resTemplate> {
     return this.authService.signup(dto);
   }
 
-  @Post(AuthSignInEndPoint)
-  async signin(@Body() dto: SignInDto): Promise<AuthSignInResponse> {
+  @Post(HttpSignIn.endPoint)
+  async signin(@Body() dto: SignInDto): Promise<HttpSignIn.resTemplate> {
     const authToken = await this.authService.signin(dto);
     return {authToken};
   }

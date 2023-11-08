@@ -3,8 +3,8 @@ import {JwtTokenPayload} from './interface';
 import * as jwt from 'jsonwebtoken';
 import {SignInDto, SignUpDto} from './dto';
 import {UserService} from 'src/user/user.service';
-import {AuthSignUpResponse} from 'src/shared/HttpEndpoints/auth';
-import { WsException } from '@nestjs/websockets';
+import {WsException} from '@nestjs/websockets';
+import {HttpSignUp} from 'src/shared/HttpEndpoints/auth';
 
 @Injectable()
 export class AuthService {
@@ -14,7 +14,7 @@ export class AuthService {
     return jwt.sign(tokenData, process.env.JWT_KEY);
   }
 
-  static verifyToken(authToken: string): boolean {
+  private static verifyToken(authToken: string): boolean {
     try {
       jwt.verify(authToken, process.env.JWT_KEY);
       return true;
@@ -28,13 +28,13 @@ export class AuthService {
     return {userId: payload.userId, nickname: payload.nickname};
   }
 
-  static verifyAndDecodeAuthToken(authToken: string, ctx: "http" | "ws" = "http"): JwtTokenPayload {
+  static verifyAndDecodeAuthToken(authToken: string, ctx: 'http' | 'ws' = 'http'): JwtTokenPayload {
     if (this.verifyToken(authToken)) return this.decodeToken(authToken);
     if (ctx === 'http') throw new UnauthorizedException('invalid token');
     if (ctx === 'ws') throw new WsException('invalid token');
   }
 
-  async signup(dto: SignUpDto): Promise<AuthSignUpResponse> {
+  async signup(dto: SignUpDto): Promise<HttpSignUp.resTemplate> {
     return await this.userService.createUser(dto);
   }
 

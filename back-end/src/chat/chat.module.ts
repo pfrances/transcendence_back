@@ -3,10 +3,10 @@ import {ChatService} from './chat.service';
 import {ChatGateway} from './chat.gateway';
 import {ChatController} from './chat.controller';
 import {AuthModule} from 'src/auth/auth.module';
-import {RoomMonitorModule} from 'src/webSocket/room/roomMonitor.module';
+import {WsRoomModule} from 'src/webSocket/WsRoom/WsRoom.module';
 
 @Module({
-  imports: [AuthModule, RoomMonitorModule],
+  imports: [AuthModule, WsRoomModule],
   providers: [ChatService, ChatGateway],
   controllers: [ChatController],
   exports: [ChatService],

@@ -5,27 +5,25 @@ import {InvitationActionPipe, InvitationKindPipe} from './pipe';
 import {JwtAuthGuard} from 'src/auth/guard';
 import {GetInfoFromJwt} from 'src/decorator';
 import {InvitationKind} from '@prisma/client';
-import {
-  InvitationEndPointBase,
-  SendInvitationEndPoint_NEST,
-  SendInvitationReponse,
-  UpdateInvitationEndPoint_NEST,
-  UpdateInvitationReponse,
-} from 'src/shared/HttpEndpoints/invitation';
 import {SendInvitationDto} from './dto/SendInvitation.dto';
-import {InvitationAction_Url} from 'src/shared/base_types';
+import {InvitationAction_Url} from 'src/shared/HttpEndpoints/types';
+import {
+  HttpInvitation,
+  HttpSendInvitation,
+  HttpUpdateInvitation,
+} from 'src/shared/HttpEndpoints/invitation';
 
-@Controller(InvitationEndPointBase)
+@Controller(HttpInvitation.endPointBase)
 @UseGuards(JwtAuthGuard)
 export class InvitationController {
   constructor(private readonly invitation: InvitationsService) {}
 
-  @Post(SendInvitationEndPoint_NEST)
+  @Post(HttpSendInvitation.endPoint)
   sendInvidationHandler(
     @GetInfoFromJwt('userId') userId: number,
     @Param('kind', new InvitationKindPipe()) kind: InvitationKind,
     @Body() dto: SendInvitationDto,
-  ): Promise<SendInvitationReponse> {
+  ): Promise<HttpSendInvitation.resTemplate> {
     return this.invitation.sendInvitation({
       receiverId: dto.targetUserId,
       ...dto,
@@ -34,13 +32,13 @@ export class InvitationController {
     });
   }
 
-  @Post(UpdateInvitationEndPoint_NEST)
+  @Post(HttpUpdateInvitation.endPoint)
   async invitationActionHandler(
     @GetInfoFromJwt('userId') userId: number,
     @Param('kind', new InvitationKindPipe()) kind: InvitationKind,
     @Param('action', new InvitationActionPipe()) action: InvitationAction_Url,
     @Param('invitationId', ParseIntPipe) invitationId: number,
-  ): Promise<UpdateInvitationReponse> {
+  ): Promise<HttpUpdateInvitation.resTemplate> {
     const dto = generateUpdateInvitationDto(userId, action, kind, invitationId);
     return this.invitation.updateInvitationStatus(dto);
   }

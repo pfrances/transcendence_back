@@ -4,7 +4,6 @@ import {JwtModule} from '@nestjs/jwt';
 import {PassportModule} from '@nestjs/passport';
 import {AuthController} from './auth.controller';
 import {FortyTwoStrategy, JwtStrategy} from './strategy';
-import {HttpModule} from '@nestjs/axios';
 import {UserModule} from 'src/user/user.module';
 
 @Module({
@@ -14,7 +13,6 @@ import {UserModule} from 'src/user/user.module';
       signOptions: {expiresIn: '1d'},
     }),
     PassportModule,
-    HttpModule,
     UserModule,
   ],
   providers: [FortyTwoStrategy, JwtStrategy, AuthService],

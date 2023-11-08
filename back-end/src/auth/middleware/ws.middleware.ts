@@ -8,7 +8,8 @@ type SocketIOMiddleWare = {
 export const SocketAuthMiddleware = (): SocketIOMiddleWare => {
   return (client: Socket, next: (err?: Error) => void) => {
     try {
-      client.data = JwtAuthGuard.validateToken(client.handshake.auth.token, 'ws');
+      const token = client?.handshake?.auth?.token ?? client?.handshake?.headers?.access_token;
+      client.data = JwtAuthGuard.validateToken(token, 'ws');
       next();
     } catch (err) {
       next(err);

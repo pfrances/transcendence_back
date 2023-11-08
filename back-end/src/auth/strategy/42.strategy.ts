@@ -3,8 +3,7 @@ import {PassportStrategy} from '@nestjs/passport';
 import {Strategy} from 'passport-42';
 import {UserService} from 'src/user/user.service';
 import {FortyTwoProfile} from '../interface';
-import {PrismaUser} from 'src/prisma/interfaces';
-import {UserPublicProfile} from 'src/shared/base_interfaces';
+import {UserPublicProfile} from 'src/shared/HttpEndpoints/interfaces';
 
 @Injectable()
 export class FortyTwoStrategy extends PassportStrategy(Strategy, '42') {

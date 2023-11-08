@@ -4,28 +4,34 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import {PrismaService} from '../prisma/prisma.service';
+import {CreateChatDto, SendMessageDto} from 'src/chat/dto';
+import {JoinChat, LeaveChat, UpdateChat} from 'src/chat/interface';
 import * as argon from 'argon2';
-import {PrismaService} from 'src/prisma/prisma.service';
-import {CreateChatDto, SendMessageDto} from './dto';
+import {Role} from '@prisma/client';
+import {HttpCreateChat, HttpGetAllMessage, HttpGetChatInfo} from 'src/shared/HttpEndpoints/chat';
+import {WsChatJoin, WsChatLeave, WsChat_FromServer, WsNewMessage} from 'src/shared/WsEvents/chat';
+import {RoomNamePrefix} from 'src/webSocket/WsRoom/interface';
+import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
 import {WsException} from '@nestjs/websockets';
-import {
-  CreateChatResponse,
-  GetAllMessageResponse,
-  GetChatInfoResponse,
-} from 'src/shared/HttpEndpoints/chat/';
-import {RoomMonitorService} from 'src/webSocket/room/roomMonitor.service';
-import {OnSendMessageEvent} from 'src/shared/WsEvents/chat';
-import {JoinChat, LeaveChat, UpdateChat} from './interface';
 
 @Injectable()
 export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly room: RoomMonitorService,
+    private readonly room: WsRoomService,
   ) {}
+  private readonly prefix: RoomNamePrefix = 'Chatroom-';
 
-  async createChat(userId: number, dto: CreateChatDto): Promise<CreateChatResponse> {
-    if (dto.password) dto.password = await argon.hash(dto.password);
+  async getUserJoinedChatIds(userId: number): Promise<number[]> {
+    const joinedChats = await this.prisma.chatParticipation.findMany({
+      where: {userId, hasLeaved: false},
+      select: {chatId: true},
+    });
+    return joinedChats.map(chat => chat.chatId);
+  }
+
+  async createChat(userId: number, dto: CreateChatDto): Promise<HttpCreateChat.resTemplate> {
     const chat = await this.prisma.chat.create({
       data: {...dto, participants: {create: {userId, role: 'ADMIN'}}},
       select: {
@@ -46,47 +52,7 @@ export class ChatService {
     });
     const hasPassword = chat?.password ? true : false;
     delete chat.password;
-    this.room.addUserToRoom({prefix: 'Chatroom-', roomId: chat.chatId, userId});
     return {...chat, hasPassword};
-  }
-
-  async joinChat(dto: JoinChat, hasInvitation: boolean = false): Promise<void> {
-    const chat = await this.prisma.chat.findUnique({
-      where: {chatId: dto.chatId},
-      select: {password: true, chatId: true},
-    });
-    if (!chat) throw new NotFoundException(`no such chat`);
-    if (!hasInvitation && chat.password && !(await argon.verify(chat.password, dto.password)))
-      throw new UnauthorizedException(`invalid password`);
-
-    const participation = await this.prisma.chatParticipation.findUnique({
-      where: {chatId_userId: {chatId: dto.chatId, userId: dto.userId}},
-      select: {hasLeaved: true, blockedUntil: true},
-    });
-    const blockedUntil = participation?.blockedUntil?.getTime();
-    if (blockedUntil && blockedUntil > Date.now())
-      throw new UnauthorizedException(`This user is still blocked until ${blockedUntil}`);
-    if (participation?.hasLeaved === false) throw new BadRequestException(`user already joined`);
-    if (participation?.hasLeaved) {
-      await this.prisma.chatParticipation.update({
-        where: {chatId_userId: {chatId: dto.chatId, userId: dto.userId}},
-        data: {hasLeaved: false},
-      });
-    } else {
-      await this.prisma.chatParticipation.create({
-        data: {chatId: chat.chatId, userId: dto.userId},
-      });
-    }
-    this.room.addUserToRoom({prefix: 'Chatroom-', roomId: dto.chatId, userId: dto.userId});
-  }
-
-  async leaveChat(dto: LeaveChat): Promise<void> {
-    const participant = await this.prisma.chatParticipation.update({
-      where: {chatId_userId: {chatId: dto.chatId, userId: dto.userId}},
-      data: {hasLeaved: true},
-    });
-    if (!participant) throw new NotFoundException(`no such participant`);
-    this.room.removeUserFromRoom({prefix: 'Chatroom-', roomId: dto.chatId, userId: dto.userId});
   }
 
   async updateChat(dto: UpdateChat): Promise<void> {
@@ -111,9 +77,9 @@ export class ChatService {
 
     const now = Date.now();
     const participantData = participants.map(elem => {
-      if (elem?.blockUntil.getTime() < now)
+      if (elem?.blockUntil?.getTime() < now)
         throw new BadRequestException('Unable to block a user until a past date');
-      if (elem?.muteUntil.getTime() < now)
+      if (elem?.muteUntil?.getTime() < now)
         throw new BadRequestException('Unable to mute a user until a past date');
       if (elem.userId === userId)
         throw new UnauthorizedException("Unable to modify user's own participation settings");
@@ -133,50 +99,43 @@ export class ChatService {
         data: {...participant},
       });
       if (participant['hasLeaved'])
-        this.room.removeUserFromRoom({
-          prefix: 'Chatroom-',
-          roomId: chatId,
-          userId: participant.userId,
-        });
+        this.handleWsChatEvent(new WsChatLeave.Dto({chatId, userId: participant.userId}));
     }
   }
 
-  async sendMessage(userId: number, {chatId, messageContent}: SendMessageDto): Promise<OnSendMessageEvent> {
+  async joinChat(dto: JoinChat, hasInvitation: boolean = false): Promise<void> {
+    const {chatId, userId, password} = dto;
+    const chat = await this.prisma.chat.findUnique({
+      where: {chatId},
+      select: {password: true, chatId: true},
+    });
+    if (!chat) throw new NotFoundException(`no such chat`);
+    if (!hasInvitation && chat.password && !(await argon.verify(chat.password, password)))
+      throw new UnauthorizedException(`invalid password`);
+
     const participation = await this.prisma.chatParticipation.findUnique({
       where: {chatId_userId: {chatId, userId}},
-      select: {
-        hasLeaved: true,
-        chatId: true,
-        userId: true,
-        blockedUntil: true,
-        mutedUntil: true,
-      },
+      select: {hasLeaved: true, blockedUntil: true},
     });
-    if (!participation) throw new WsException('no such chat available for this user');
-    const now = Date.now();
-    if (participation?.hasLeaved) throw new WsException('user has already leaved this chat');
-    if (participation?.blockedUntil?.getTime() > now) throw new WsException('user still blocked');
-    if (participation?.mutedUntil?.getTime() > now) throw new WsException('user still mute');
-    try {
-      const {messageId} = await this.prisma.message.create({
-        data: {userId, chatId, messageContent},
-        select: {messageId: true},
+    const blockedUntil = participation?.blockedUntil?.getTime();
+    if (blockedUntil && blockedUntil > Date.now())
+      throw new UnauthorizedException(`This user is still blocked until ${blockedUntil}`);
+    if (participation?.hasLeaved === false) throw new BadRequestException(`user already joined`);
+    if (participation?.hasLeaved) {
+      await this.prisma.chatParticipation.update({
+        where: {chatId_userId: {chatId, userId}},
+        data: {hasLeaved: false},
       });
-      const toSend = {messageId, userId, chatId, messageContent};
-      this.room.sendMessageInRoom({
-        prefix: 'Chatroom-',
-        roomId: chatId,
-        eventName: 'newMessage',
-        message: toSend,
-        senderId: userId,
-      });
-      return toSend;
-    } catch (err) {
-      throw new WsException(err);
+    } else {
+      await this.prisma.chatParticipation.create({data: {chatId, userId}});
     }
+    this.handleWsChatEvent(new WsChatJoin.Dto({chatId, userId}));
   }
 
-  async getAllMessagesFromChatId(userId: number, chatId: number): Promise<GetAllMessageResponse> {
+  async getAllMessagesFromChatId(
+    userId: number,
+    chatId: number,
+  ): Promise<HttpGetAllMessage.resTemplate> {
     const messages = await this.prisma.message.findMany({
       where: {chatParticipation: {chatId: chatId}},
       select: {messageId: true, createdAt: true, messageContent: true, userId: true},
@@ -202,7 +161,7 @@ export class ChatService {
     throw new UnauthorizedException('This user has no access to this chat');
   }
 
-  async getChatInfo(chatId: number): Promise<GetChatInfoResponse> {
+  async getChatInfo(chatId: number): Promise<HttpGetChatInfo.resTemplate> {
     const chat = await this.prisma.chat.findUnique({
       where: {chatId},
       select: {
@@ -225,20 +184,96 @@ export class ChatService {
     delete chat.password;
     return {...chat, hasPassword};
   }
-
-  async getUserJoinedChatIds(userId: number): Promise<number[]> {
-    const joinedChats = await this.prisma.chatParticipation.findMany({
-      where: {userId, hasLeaved: false},
-      select: {chatId: true},
+  async sendMessage(userId: number, {chatId, messageContent}: SendMessageDto): Promise<void> {
+    const participation = await this.prisma.chatParticipation.findUnique({
+      where: {chatId_userId: {chatId, userId}},
+      select: {
+        hasLeaved: true,
+        chatId: true,
+        userId: true,
+        blockedUntil: true,
+        mutedUntil: true,
+      },
     });
-    return joinedChats.map(chat => chat.chatId);
+    if (!participation) throw new WsException('no such chat available for this user');
+    const now = Date.now();
+    if (participation?.hasLeaved) throw new WsException('user has already leaved this chat');
+    if (participation?.blockedUntil?.getTime() > now) throw new WsException('user still blocked');
+    if (participation?.mutedUntil?.getTime() > now) throw new WsException('user still mute');
+    try {
+      const {messageId} = await this.prisma.message.create({
+        data: {userId, chatId, messageContent},
+        select: {messageId: true},
+      });
+      this.handleWsChatEvent(
+        new WsNewMessage.Dto({messageId, senderId: userId, chatId, messageContent}),
+      );
+    } catch (err) {
+      throw new WsException(err);
+    }
+  }
+
+  async leaveChat(dto: LeaveChat): Promise<void> {
+    const {chatId, userId} = dto;
+    const participant = await this.prisma.chatParticipation.update({
+      where: {chatId_userId: {chatId, userId}},
+      data: {hasLeaved: true},
+    });
+    if (!participant) throw new NotFoundException(`no such participant`);
+    this.handleWsChatEvent(new WsChatLeave.Dto({chatId, userId}));
+  }
+
+  async checkPermissionToUpdateChat(chatId: number, userId: number): Promise<void> | never {
+    const adminParticipation = await this.prisma.chatParticipation.findUnique({
+      where: {chatId_userId: {chatId, userId}},
+      select: {role: true, hasLeaved: true},
+    });
+    if (!adminParticipation)
+      throw new UnauthorizedException('This user is not present in this chat');
+    if (adminParticipation.role === 'MEMBER')
+      throw new UnauthorizedException('This user has no right to update chat information');
+    if (adminParticipation.hasLeaved)
+      throw new UnauthorizedException('This user has leaved the chat');
+  }
+
+  async updateChatInfo(
+    chatId: number,
+    chatInfo: {name?: string; password?: string; chatAvatarUrl?: string},
+  ): Promise<void> {
+    if (chatInfo.password) chatInfo.password = await argon.hash(chatInfo.password);
+    await this.prisma.chat.update({
+      where: {chatId},
+      data: {...chatInfo},
+    });
+  }
+
+  async updateChatParticipants(
+    userId: number,
+    chatId: number,
+    data: {blockedUntil?: Date; hasLeaved?: boolean; mutedUntil?: Date; role?: Role},
+  ) {
+    await this.prisma.chatParticipation.update({
+      where: {chatId_userId: {chatId, userId: userId}},
+      data: {...data},
+    });
+  }
+
+  handleWsChatEvent(eventDto: WsChat_FromServer.template): void {
+    const prefix = this.prefix;
+    const roomId = eventDto.message.chatId;
+    this.room.broadcastMessageInRoom({prefix, roomId, ...eventDto});
+
+    if (eventDto instanceof WsChat_FromServer.chatJoin.Dto)
+      this.room.addUserToRoom({prefix, roomId, userId: eventDto.message.userId});
+    else if (eventDto instanceof WsChat_FromServer.chatLeave.Dto)
+      this.room.removeUserFromRoom({prefix, roomId, userId: eventDto.message.userId});
   }
 
   async handleUserConnection(userId: number): Promise<void> {
     const joinedChatIds = await this.getUserJoinedChatIds(userId);
 
     for (const chatId of joinedChatIds) {
-      this.room.addUserToRoom({prefix: 'Chatroom-', roomId: chatId, userId});
+      this.room.addUserToRoom({prefix: this.prefix, roomId: chatId, userId});
     }
   }
 
@@ -246,7 +281,7 @@ export class ChatService {
     const joinedChatIds = await this.getUserJoinedChatIds(userId);
 
     for (const chatId of joinedChatIds) {
-      this.room.removeUserFromRoom({prefix: 'Chatroom-', roomId: chatId, userId});
+      this.room.removeUserFromRoom({prefix: this.prefix, roomId: chatId, userId});
     }
   }
 }

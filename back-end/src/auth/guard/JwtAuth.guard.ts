@@ -1,4 +1,4 @@
-import {CanActivate, ExecutionContext, Injectable, UnauthorizedException} from '@nestjs/common';
+import {CanActivate, ExecutionContext, Injectable} from '@nestjs/common';
 import {AuthGuard} from '@nestjs/passport';
 import {JwtTokenPayload} from '../interface';
 import {AuthService} from '../auth.service';
@@ -15,12 +15,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') implements CanActivate {
       return super.canActivate(context);
     } else if (context.getType() === 'ws') {
       const client = context.switchToWs().getClient();
-      const authToken = client.handshake.auth.token;
-      client.handshake.auth.payload = JwtAuthGuard.validateToken(authToken);
+      const token = client?.handshake?.auth?.token ?? client?.handshake?.headers?.access_token;
+      client.handshake.auth.payload = JwtAuthGuard.validateToken(token, 'ws');
       return true;
     }
   }
-  static validateToken(token: string, ctx: "http" | "ws" = "http"): JwtTokenPayload {
+  static validateToken(token: string, ctx: 'http' | 'ws' = 'http'): JwtTokenPayload {
     return AuthService.verifyAndDecodeAuthToken(token, ctx);
   }
 }
