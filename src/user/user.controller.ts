@@ -10,7 +10,7 @@ import {JwtAuthGuard} from 'src/auth/guard';
 import {EditUserDto} from './dto';
 import {UserService} from './user.service';
 import {GetInfoFromJwt} from 'src/decorator';
-import {HttpEditMe, HttpGetMe, HttpUser} from 'src/shared/HttpEndpoints/user';
+import {HttpAllUsers, HttpEditMe, HttpGetMe, HttpUser} from 'src/shared/HttpEndpoints/user';
 
 @Controller(HttpUser.endPointBase)
 @UseGuards(JwtAuthGuard)
@@ -20,6 +20,12 @@ export class UserController {
   @Get(HttpGetMe.endPoint)
   async getMe(@GetInfoFromJwt('userId') userId: number): Promise<HttpGetMe.resTemplate> {
     return await this.userService.getUserPublicInfo({userId});
+  }
+
+  @Get(HttpAllUsers.endPoint)
+  async getAllUsers(): Promise<HttpAllUsers.resTemplate> {
+    const users = await this.userService.getAllUsersPublicInfo();
+    return new HttpAllUsers.resTemplate(users);
   }
 
   @Patch(HttpEditMe.endPoint)

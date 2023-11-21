@@ -22,6 +22,14 @@ export class UserService {
     return user.userId;
   }
 
+  async getAllUsersPublicInfo(): Promise<UserPublicProfile[]> {
+    const users = await this.prisma.profile.findMany({
+      select: {userId: true, nickname: true, avatarUrl: true},
+    });
+    if (!users) throw new Error('no user found');
+    return users;
+  }
+
   async editUserInfo(
     userInfo: GetUserBy42Id | GetUserById,
     dto: EditUserDto,
