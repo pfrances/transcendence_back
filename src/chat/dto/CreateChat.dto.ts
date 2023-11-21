@@ -16,8 +16,8 @@ export class CreateChatDto {
   password?: string;
 
   constructor(data: HttpCreateChat.reqTemplate) {
-    this.name = data.name;
-    this.chatAvatarUrl = data.chatAvatarUrl;
-    this.password = data.password;
+    this.name = data?.name;
+    this.chatAvatarUrl = data?.chatAvatarUrl;
+    this.password = data?.password;
   }
 }

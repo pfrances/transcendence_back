@@ -19,9 +19,9 @@ export class SignUpDto {
   avatarUrl?: string;
 
   constructor(dto: HttpSignUp.reqTemplate) {
-    this.nickname = dto.nickname;
-    this.email = dto.email;
-    this.password = dto.password;
-    this.avatarUrl = dto.avatarUrl;
+    this.nickname = dto?.nickname;
+    this.email = dto?.email;
+    this.password = dto?.password;
+    this.avatarUrl = dto?.avatarUrl;
   }
 }

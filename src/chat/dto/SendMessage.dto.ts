@@ -10,7 +10,7 @@ export class SendMessageDto {
   messageContent: string;
 
   constructor(data: WsSendMessage.eventMessageTemplate) {
-    this.chatId = data.chatId;
-    this.messageContent = data.messageContent;
+    this.chatId = data?.chatId;
+    this.messageContent = data?.messageContent;
   }
 }

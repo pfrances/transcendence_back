@@ -7,6 +7,6 @@ export class RemoveFriendDto {
   friendId: number;
 
   constructor(dto: HttpRemoveFriend.reqTemplate) {
-    this.friendId = dto.friendId;
+    this.friendId = dto?.friendId;
   }
 }

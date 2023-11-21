@@ -8,11 +8,11 @@ export class HashManagerService {
   }
 
   async verify(
-    plainText: string | null | undefined,
     hash: string | null | undefined,
+    plainText: string | null | undefined,
   ): Promise<boolean> {
     if (!hash) return plainText ? false : true;
     if (!plainText) return false;
-    return argon2.verify(hash, plainText);
+    return await argon2.verify(hash, plainText);
   }
 }

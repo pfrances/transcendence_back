@@ -13,8 +13,8 @@ export class SendInvitationDto {
   targetGameId?: number;
 
   constructor(dto: SendInvitationDto) {
-    this.targetUserId = dto.targetUserId;
-    this.targetChatId = dto.targetChatId;
-    this.targetGameId = dto.targetGameId;
+    this.targetUserId = dto?.targetUserId;
+    this.targetChatId = dto?.targetChatId;
+    this.targetGameId = dto?.targetGameId;
   }
 }

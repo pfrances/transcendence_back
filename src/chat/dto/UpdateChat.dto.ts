@@ -26,9 +26,9 @@ export class UpdateChatDto {
   }[];
 
   constructor(data: HttpUpdateChat.reqTemplate) {
-    this.name = data.name;
-    this.password = data.password;
-    this.chatAvatarUrl = data.chatAvatarUrl;
-    this.participants = data.participants;
+    this.name = data?.name;
+    this.password = data?.password;
+    this.chatAvatarUrl = data?.chatAvatarUrl;
+    this.participants = data?.participants;
   }
 }

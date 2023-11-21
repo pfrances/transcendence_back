@@ -19,11 +19,7 @@ export class FortyTwoStrategy extends PassportStrategy(Strategy, '42') {
       },
     });
   }
-  async validate(
-    accessToken: string,
-    refreshToken: string,
-    profile: any,
-  ): Promise<UserPublicProfile> {
+  async validate(profile: any): Promise<UserPublicProfile> {
     if (Date.now() > profile?.expires_at)
       throw new UnauthorizedException('Access token is expired.');
     const userInfo: FortyTwoProfile = {...profile?._json};

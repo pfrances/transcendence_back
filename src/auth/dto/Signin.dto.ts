@@ -11,7 +11,7 @@ export class SignInDto {
   password: string;
 
   constructor(dto: HttpSignIn.reqTemplate) {
-    this.nickname = dto.nickname;
-    this.password = dto.password;
+    this.nickname = dto?.nickname;
+    this.password = dto?.password;
   }
 }
