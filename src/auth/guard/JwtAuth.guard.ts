@@ -22,6 +22,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') implements CanActivate {
       client.handshake.auth.payload = this.validateToken(token, 'ws');
       return true;
     }
+    throw new Error('unknown context type');
   }
   validateToken(token: string, ctx: 'http' | 'ws' = 'http'): JwtTokenPayload {
     return this.jwt.verifyAndDecodeAuthToken(token, ctx);

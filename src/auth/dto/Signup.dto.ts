@@ -1,7 +1,7 @@
 import {IsEmail, IsNotEmpty, IsOptional, IsString, IsUrl} from 'class-validator';
 import {HttpSignUp} from 'src/shared/HttpEndpoints/auth';
 
-export class SignUpDto implements HttpSignUp.reqTemplate {
+export class SignUpDto {
   @IsString()
   @IsNotEmpty()
   nickname: string;
@@ -17,4 +17,11 @@ export class SignUpDto implements HttpSignUp.reqTemplate {
   @IsUrl()
   @IsOptional()
   avatarUrl?: string;
+
+  constructor(dto: HttpSignUp.reqTemplate) {
+    this.nickname = dto.nickname;
+    this.email = dto.email;
+    this.password = dto.password;
+    this.avatarUrl = dto.avatarUrl;
+  }
 }

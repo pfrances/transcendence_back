@@ -9,7 +9,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({whitelist: true}));
   app.use(
     cors({
-      origin: 'http://localhost:3000',
+      origin: process.env.NODE_ENV === 'TEST' ? '*' : 'http://localhost:3000',
       methods: ['GET', 'POST', 'PATCH', 'DELETE'],
       credentials: true,
     }),

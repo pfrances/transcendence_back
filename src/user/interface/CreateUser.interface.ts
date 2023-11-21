@@ -1,12 +1,12 @@
 export interface Create42User {
   user42Id: number;
-  nickname?: string;
+  nickname: string;
   email: string;
   avatarUrl?: string;
 }
 
 export interface CreateStandardUser {
-  nickname?: string;
+  nickname: string;
   email: string;
   password: string;
   avatarUrl?: string;

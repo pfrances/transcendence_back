@@ -2,7 +2,7 @@ import {Role} from '@prisma/client';
 import {IsArray, IsNotEmpty, IsOptional} from 'class-validator';
 import {HttpUpdateChat} from 'src/shared/HttpEndpoints/chat';
 
-export class UpdateChatDto implements HttpUpdateChat.reqTemplate {
+export class UpdateChatDto {
   @IsOptional()
   @IsNotEmpty()
   name?: string;
@@ -24,4 +24,11 @@ export class UpdateChatDto implements HttpUpdateChat.reqTemplate {
     blockUntil?: Date;
     kick?: boolean;
   }[];
+
+  constructor(data: HttpUpdateChat.reqTemplate) {
+    this.name = data.name;
+    this.password = data.password;
+    this.chatAvatarUrl = data.chatAvatarUrl;
+    this.participants = data.participants;
+  }
 }

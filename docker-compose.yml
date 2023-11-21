@@ -1,16 +1,12 @@
 version: '3.8'
 
 services:
-  dev-db_back:
-    container_name: dev_database_back
+  db_back:
+    container_name: ${DB_CONTAINER_NAME}
     image: postgres:latest
-    environment:
-      POSTGRES_DB: ${DEV_DB_NAME}
-      POSTGRES_USER: ${DEV_DB_USER}
-      POSTGRES_PASSWORD: ${DEV_DB_PASSWORD}
     ports:
-      - 5432:5432
-    networks:
-    - back-db_network
-networks:
-  back-db_network:
+      - ${DB_PORT}:5432
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}

@@ -65,9 +65,9 @@ export class InvitationsService {
 
   async sendInvitation(data: SendInvitation): Promise<HttpSendInvitation.resTemplate> {
     await this.checkSentInvitation(data);
-    const {senderId, receiverId, kind, targetChatId, targetGameId} = data;
+    let {senderId, receiverId, kind, targetChatId, targetGameId} = data;
     try {
-      const invitation = await this.prisma.invitation.create({
+      let invitation = await this.prisma.invitation.create({
         data: {senderId, receiverId, kind, targetChatId, targetGameId},
         select: {
           invitationId: true,
@@ -81,7 +81,18 @@ export class InvitationsService {
       });
       const wsDto = new WsNewInvitation.Dto(invitation);
       this.wsRoom.sendMessageToUser(invitation.receiverId, wsDto);
-      return invitation;
+      let {targetChatId: chatId, targetGameId: gameId, ...invitationToSend} = invitation;
+      if (chatId)
+        invitationToSend = {
+          ...invitationToSend,
+          targetChatId: chatId,
+        } as HttpSendInvitation.resTemplate;
+      if (gameId)
+        invitationToSend = {
+          ...invitationToSend,
+          targetGameId: gameId,
+        } as HttpSendInvitation.resTemplate;
+      return invitation as HttpSendInvitation.resTemplate;
     } catch (err) {
       throw new BadRequestException('No such user');
     }
@@ -114,14 +125,14 @@ export class InvitationsService {
           targetGameId: kind === 'GAME',
         },
       });
-      if (targetStatus === 'ACCEPTED')
-        this.handleUpdatedInvitationRelatedEvent({...invitation, targetStatus, kind});
+      // if (targetStatus === 'ACCEPTED')
+      //   this.handleUpdatedInvitationRelatedEvent({...invitation, targetStatus, kind});
       const wsDto = WsInvitationUpdated.createInvitationUpdated(invitation);
       this.wsRoom.sendMessageToUser(
         targetStatus === 'CANCELED' ? invitation.receiverId : invitation.senderId,
         wsDto,
       );
-      return invitation;
+      return invitation as any;
     } catch (err) {
       if (err instanceof HttpException) throw err;
     }

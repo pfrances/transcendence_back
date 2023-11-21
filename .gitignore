@@ -1,6 +1,7 @@
 yarn.lock
 .vscode
 /prisma/migrations
+.env*
 
 # compiled output
 /dist

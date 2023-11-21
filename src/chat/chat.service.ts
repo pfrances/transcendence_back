@@ -7,19 +7,20 @@ import {
 import {PrismaService} from '../prisma/prisma.service';
 import {CreateChatDto, SendMessageDto} from 'src/chat/dto';
 import {JoinChat, LeaveChat, UpdateChat} from 'src/chat/interface';
-import * as argon from 'argon2';
 import {Role} from '@prisma/client';
 import {HttpCreateChat, HttpGetAllMessage, HttpGetChatInfo} from 'src/shared/HttpEndpoints/chat';
 import {WsChatJoin, WsChatLeave, WsChat_FromServer, WsNewMessage} from 'src/shared/WsEvents/chat';
 import {RoomNamePrefix} from 'src/webSocket/WsRoom/interface';
 import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
 import {WsException} from '@nestjs/websockets';
+import {HashManagerService} from 'src/hashManager/hashManager.service';
 
 @Injectable()
 export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly room: WsRoomService,
+    private readonly hashManager: HashManagerService,
   ) {}
   private readonly prefix: RoomNamePrefix = 'Chatroom-';
 
@@ -51,8 +52,8 @@ export class ChatService {
       },
     });
     const hasPassword = chat?.password ? true : false;
-    delete chat.password;
-    return {...chat, hasPassword};
+    const {password, ...chatInfo} = chat;
+    return {...chatInfo, hasPassword};
   }
 
   async updateChat(dto: UpdateChat): Promise<void> {
@@ -68,7 +69,7 @@ export class ChatService {
     if (adminParticipation.hasLeaved)
       throw new UnauthorizedException('This user has leaved the chat');
     if (Object.keys(chatInfo).length) {
-      if (chatInfo.password) chatInfo.password = await argon.hash(chatInfo.password);
+      if (chatInfo.password) chatInfo.password = await this.hashManager.hash(chatInfo.password);
       await this.prisma.chat.update({
         where: {chatId},
         data: {...chatInfo},
@@ -76,24 +77,34 @@ export class ChatService {
     }
 
     const now = Date.now();
+    if (!participants) return;
     const participantData = participants.map(elem => {
-      if (elem?.blockUntil?.getTime() < now)
+      if (!elem) return;
+      const {blockUntil, muteUntil, targetRole, kick} = elem;
+      if (blockUntil && blockUntil.getTime() < now)
         throw new BadRequestException('Unable to block a user until a past date');
-      if (elem?.muteUntil?.getTime() < now)
+      if (muteUntil && muteUntil.getTime() < now)
         throw new BadRequestException('Unable to mute a user until a past date');
       if (elem.userId === userId)
         throw new UnauthorizedException("Unable to modify user's own participation settings");
-      const res = {userId: elem.userId};
-      if (elem.blockUntil) {
-        res['blockedUntil'] = elem.blockUntil;
+      const res = {userId: elem.userId} as {
+        userId: number;
+        blockedUntil?: Date;
+        mutedUntil?: Date;
+        role?: Role;
+        hasLeaved?: boolean;
+      };
+      if (blockUntil) {
+        res['blockedUntil'] = blockUntil;
         res['hasLeaved'] = true;
       }
-      if (elem.muteUntil) res['mutedUntil'] = elem.muteUntil;
-      if (elem.targetRole) res['role'] = elem.targetRole;
-      if (elem.kick) res['hasLeaved'] = true;
+      if (muteUntil) res['mutedUntil'] = muteUntil;
+      if (targetRole) res['role'] = targetRole;
+      if (kick) res['hasLeaved'] = true;
       return res;
     });
     for (const participant of participantData) {
+      if (!participant) continue;
       await this.prisma.chatParticipation.update({
         where: {chatId_userId: {chatId, userId: participant.userId}},
         data: {...participant},
@@ -110,7 +121,7 @@ export class ChatService {
       select: {password: true, chatId: true},
     });
     if (!chat) throw new NotFoundException(`no such chat`);
-    if (!hasInvitation && chat.password && !(await argon.verify(chat.password, password)))
+    if (!hasInvitation && !(await this.hashManager.verify(password, chat?.password)))
       throw new UnauthorizedException(`invalid password`);
 
     const participation = await this.prisma.chatParticipation.findUnique({
@@ -180,9 +191,10 @@ export class ChatService {
         password: true,
       },
     });
-    const hasPassword = chat.password ? true : false;
-    delete chat.password;
-    return {...chat, hasPassword};
+    if (!chat) throw new NotFoundException(`no such chat`);
+    const hasPassword = chat?.password ? true : false;
+    const {password, ...chatInfo} = chat;
+    return {...chatInfo, hasPassword};
   }
   async sendMessage(userId: number, {chatId, messageContent}: SendMessageDto): Promise<void> {
     const participation = await this.prisma.chatParticipation.findUnique({
@@ -197,9 +209,10 @@ export class ChatService {
     });
     if (!participation) throw new WsException('no such chat available for this user');
     const now = Date.now();
-    if (participation?.hasLeaved) throw new WsException('user has already leaved this chat');
-    if (participation?.blockedUntil?.getTime() > now) throw new WsException('user still blocked');
-    if (participation?.mutedUntil?.getTime() > now) throw new WsException('user still mute');
+    const {hasLeaved, blockedUntil, mutedUntil} = participation;
+    if (hasLeaved) throw new WsException('user has already leaved this chat');
+    if (blockedUntil && blockedUntil.getTime() > now) throw new WsException('user still blocked');
+    if (mutedUntil && mutedUntil.getTime() > now) throw new WsException('user still mute');
     try {
       const {messageId} = await this.prisma.message.create({
         data: {userId, chatId, messageContent},
@@ -208,7 +221,7 @@ export class ChatService {
       this.handleWsChatEvent(
         new WsNewMessage.Dto({messageId, senderId: userId, chatId, messageContent}),
       );
-    } catch (err) {
+    } catch (err: any) {
       throw new WsException(err);
     }
   }
@@ -240,7 +253,7 @@ export class ChatService {
     chatId: number,
     chatInfo: {name?: string; password?: string; chatAvatarUrl?: string},
   ): Promise<void> {
-    if (chatInfo.password) chatInfo.password = await argon.hash(chatInfo.password);
+    if (chatInfo.password) chatInfo.password = await this.hashManager.hash(chatInfo.password);
     await this.prisma.chat.update({
       where: {chatId},
       data: {...chatInfo},

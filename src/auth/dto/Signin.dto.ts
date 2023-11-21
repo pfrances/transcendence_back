@@ -1,7 +1,7 @@
 import {IsNotEmpty, IsString} from 'class-validator';
 import {HttpSignIn} from 'src/shared/HttpEndpoints/auth';
 
-export class SignInDto implements HttpSignIn.reqTemplate {
+export class SignInDto {
   @IsString()
   @IsNotEmpty()
   nickname: string;
@@ -9,4 +9,9 @@ export class SignInDto implements HttpSignIn.reqTemplate {
   @IsString()
   @IsNotEmpty()
   password: string;
+
+  constructor(dto: HttpSignIn.reqTemplate) {
+    this.nickname = dto.nickname;
+    this.password = dto.password;
+  }
 }

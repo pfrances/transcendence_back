@@ -1,24 +1,39 @@
 import {ConflictException, Injectable, UnauthorizedException} from '@nestjs/common';
 import {EditUserDto} from './dto';
-import * as argon from 'argon2';
 import {PrismaService} from 'src/prisma/prisma.service';
-import {CreateUserTemplate, GetUserTemplate} from './interface';
+import {CreateUserTemplate, GetUserBy42Id, GetUserById, GetUserTemplate} from './interface';
 import {SignInDto} from 'src/auth/dto';
 import {JwtTokenPayload} from 'src/auth/interface';
 import {UserPublicProfile} from 'src/shared/HttpEndpoints/interfaces';
 import {HttpEditMe} from 'src/shared/HttpEndpoints/user';
+import {PrismaClientKnownRequestError} from '@prisma/client/runtime/library';
+import {HashManagerService} from 'src/hashManager/hashManager.service';
 
 @Injectable()
 export class UserService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly hashManager: HashManagerService,
+  ) {}
 
-  async editUserInfo(userInfo: GetUserTemplate, dto: EditUserDto): Promise<HttpEditMe.resTemplate> {
+  async getUserIdByNickname(nickname: string): Promise<number> {
+    const user = await this.prisma.profile.findUnique({where: {nickname}, select: {userId: true}});
+    if (!user) throw new Error(`user with nickname '${nickname}' not found`);
+    return user.userId;
+  }
+
+  async editUserInfo(
+    userInfo: GetUserBy42Id | GetUserById,
+    dto: EditUserDto,
+  ): Promise<HttpEditMe.resTemplate> {
     try {
-      if (dto.password) dto.password = await argon.hash(dto.password);
+      if (dto.password) dto.password = await this.hashManager.hash(dto.password);
       const userModelInfo = {email: dto.email, password: dto.password};
       const profileModelInfo = {nickname: dto.nickname, avatarUrl: dto.avatarUrl};
+      let findInfo = {...userInfo};
+
       const user = await this.prisma.user.update({
-        where: {...userInfo},
+        where: {...findInfo},
         select: {
           profile: {select: {userId: true, nickname: true, avatarUrl: true}},
         },
@@ -27,12 +42,14 @@ export class UserService {
           profile: {update: {...profileModelInfo}},
         },
       });
-      return user?.profile;
-    } catch (err) {
-      if (err.code === 'P2002')
+      if (!user?.profile) throw new Error('unable to update the user');
+      return user.profile;
+    } catch (err: PrismaClientKnownRequestError | any) {
+      if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002')
         throw new ConflictException(
-          `unable to update the field ${err.meta.target} because the value is not available`,
+          `unable to update the field ${err.meta?.target} because the value is not available`,
         );
+      throw err;
     }
   }
 
@@ -42,12 +59,15 @@ export class UserService {
         where: {...userInfo},
         select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}},
       });
-      return user?.profile;
+      if (!user?.profile) throw new Error('user profile not found');
+      return user.profile;
     }
-    return await this.prisma.profile.findUnique({
+    const user = await this.prisma.profile.findUnique({
       where: {...userInfo},
       select: {userId: true, nickname: true, avatarUrl: true},
     });
+    if (!user) throw new Error('user profile not found');
+    return user;
   }
 
   async verifyUserCredential({nickname, password}: SignInDto): Promise<JwtTokenPayload> {
@@ -55,30 +75,29 @@ export class UserService {
       where: {profile: {nickname}},
       select: {userId: true, password: true},
     });
-    if (user && (await argon.verify(user.password, password)))
-      return {userId: user.userId, nickname};
+    if (!user) throw new UnauthorizedException('invalid credential');
+    if (!user.password) throw new UnauthorizedException('invalid credential');
+    const isValidPassword = await this.hashManager.verify(user.password, password);
+    if (isValidPassword) return {userId: user.userId, nickname};
     throw new UnauthorizedException('invalid credential');
   }
 
   async createUser(dto: CreateUserTemplate): Promise<UserPublicProfile> {
     try {
-      if ('password' in dto) dto.password = await argon.hash(dto.password);
+      if ('password' in dto) dto.password = await this.hashManager.hash(dto.password);
       const {nickname, avatarUrl, ...userInfo} = dto;
-      const user = await this.prisma.user.create({
-        data: {
-          ...userInfo,
-          profile: {create: {nickname, avatarUrl}},
-        },
-        select: {
-          profile: {select: {userId: true, nickname: true, avatarUrl: true}},
-        },
+      const profile = await this.prisma.profile.create({
+        data: {user: {create: {...userInfo}}, nickname, avatarUrl},
+        select: {userId: true, nickname: true, avatarUrl: true},
       });
-      return user?.profile;
-    } catch (err) {
-      if (err.code === 'P2002')
+      if (!profile) throw new Error('unable to create the user');
+      return profile;
+    } catch (err: PrismaClientKnownRequestError | any) {
+      if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002')
         throw new ConflictException(
-          `unable to create the user. ${err.meta.target} is not available`,
+          `unable to create the user. ${err.meta?.target} is not available`,
         );
+      throw err;
     }
   }
 

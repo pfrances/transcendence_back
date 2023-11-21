@@ -24,6 +24,7 @@ export class FriendService {
       where: {userId},
       select: {friendUserIds: true},
     });
+    if (!profile) throw new Error(`user with id '${userId}' not found`);
     return profile.friendUserIds;
   }
 
@@ -32,6 +33,7 @@ export class FriendService {
       where: {userId},
       select: {friendsProfiles: {select: {userId: true, nickname: true, avatarUrl: true}}},
     });
+    if (!userProfile) throw new Error(`user with id '${userId}' not found`);
     return {friendsProfiles: userProfile.friendsProfiles};
   }
 

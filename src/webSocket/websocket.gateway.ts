@@ -20,7 +20,7 @@ export class SocketMonitorGateway
     private readonly jwt: JwtService,
   ) {}
 
-  @WebSocketServer() server: Server;
+  @WebSocketServer() server: Server = {} as Server;
 
   afterInit(client: Socket) {
     client.use(SocketAuthMiddleware(this.jwt) as any);

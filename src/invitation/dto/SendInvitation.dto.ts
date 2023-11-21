@@ -11,4 +11,10 @@ export class SendInvitationDto {
   @IsNumber()
   @IsOptional()
   targetGameId?: number;
+
+  constructor(dto: SendInvitationDto) {
+    this.targetUserId = dto.targetUserId;
+    this.targetChatId = dto.targetChatId;
+    this.targetGameId = dto.targetGameId;
+  }
 }

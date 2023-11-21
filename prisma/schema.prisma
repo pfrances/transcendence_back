@@ -22,9 +22,9 @@ model User {
 }
 
 model Profile {
-  userId             Int                 @id @default(autoincrement())
-  user               User                @relation("profile", fields: [userId], references: [userId])
-  nickname           String?             @unique
+  userId             Int                 @id
+  user               User                @relation("profile", fields: [userId], references: [userId], onDelete: Cascade)
+  nickname           String              @unique
   avatarUrl          String?
   friendUserIds      Int[]
   friendsProfiles    Profile[]           @relation("friends")
@@ -38,14 +38,14 @@ model Invitation {
 
   senderId   Int
   receiverId Int
-  sender     User @relation("SentInvitations", fields: [senderId], references: [userId])
-  receiver   User @relation("ReceivedInvitations", fields: [receiverId], references: [userId])
+  sender     User @relation("SentInvitations", fields: [senderId], references: [userId], onDelete: Cascade)
+  receiver   User @relation("ReceivedInvitations", fields: [receiverId], references: [userId], onDelete: Cascade)
 
   status InvitationStatus @default(PENDING)
   kind   InvitationKind
 
   targetChatId Int?
-  targetChat   Chat? @relation(fields: [targetChatId], references: [chatId])
+  targetChat   Chat? @relation(fields: [targetChatId], references: [chatId], onDelete: Cascade)
 
   targetGameId Int?
   targetGame   Game?
@@ -85,7 +85,7 @@ model Message {
 
   chatId            Int
   userId            Int
-  chatParticipation ChatParticipation @relation(fields: [chatId, userId], references: [chatId, userId])
+  chatParticipation ChatParticipation @relation(fields: [chatId, userId], references: [chatId, userId], onDelete: Cascade)
   messageContent    String
 
   @@map("Messages")
@@ -100,10 +100,10 @@ model ChatParticipation {
   messages Message[]
 
   chatId Int
-  chat   Chat @relation(fields: [chatId], references: [chatId])
+  chat   Chat @relation(fields: [chatId], references: [chatId], onDelete: Cascade)
 
   userId      Int
-  userProfile Profile @relation(fields: [userId], references: [userId])
+  userProfile Profile @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
   @@unique([chatId, userId])
   @@map("ChatParticipations")
@@ -119,10 +119,10 @@ model GameParticipation {
   isWinner Boolean?
 
   gameId Int
-  game   Game @relation(fields: [gameId], references: [gameId])
+  game   Game @relation(fields: [gameId], references: [gameId], onDelete: Cascade)
 
   userId      Int
-  userProfile Profile @relation(fields: [userId], references: [userId])
+  userProfile Profile @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
   @@id([gameId, userId])
   @@map("GameParticipations")
@@ -141,7 +141,7 @@ model Game {
   ballPositionY Int @default(0)
 
   invitationId Int                 @unique
-  invitation   Invitation          @relation(fields: [invitationId], references: [invitationId])
+  invitation   Invitation          @relation(fields: [invitationId], references: [invitationId], onDelete: Cascade)
   participants GameParticipation[]
 
   @@map("Games")

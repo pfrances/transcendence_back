@@ -9,15 +9,21 @@ export class WsSocketService {
   private static ClientJwtMap = new Map<string, JwtTokenPayload>();
 
   static getClientSocketByUserId(userId: number): Socket {
-    return WsSocketService.ClientSocketMap.get(userId);
+    const clientSocket = WsSocketService.ClientSocketMap.get(userId);
+    if (!clientSocket) throw new Error('client socket not found');
+    return clientSocket;
   }
 
   static getUserIdByClientSocketId(socketId: string): number {
-    return WsSocketService.ClientJwtMap.get(socketId)?.userId;
+    const userId = WsSocketService.ClientJwtMap.get(socketId)?.userId;
+    if (!userId) throw new Error('user id not found');
+    return userId;
   }
 
   static getJwtInfoByClientSocketId(socketId: string): JwtTokenPayload {
-    return WsSocketService.ClientJwtMap.get(socketId);
+    const jwt = WsSocketService.ClientJwtMap.get(socketId);
+    if (!jwt) throw new Error('jwt not found');
+    return jwt;
   }
 
   static addUserToSocketMap(client: Socket): void {

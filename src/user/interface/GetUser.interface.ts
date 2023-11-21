@@ -6,4 +6,8 @@ export interface GetUserById {
   userId: number;
 }
 
-export type GetUserTemplate = GetUserBy42Id | GetUserById;
+export interface GetUserByNickname {
+  nickname: string;
+}
+
+export type GetUserTemplate = GetUserBy42Id | GetUserById | GetUserByNickname;

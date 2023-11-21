@@ -1,6 +1,5 @@
 import {Module} from '@nestjs/common';
 import {AuthModule} from './auth/auth.module';
-import {ConfigModule} from '@nestjs/config';
 import {PrismaModule} from './prisma/prisma.module';
 import {UserModule} from './user/user.module';
 import {ChatModule} from './chat/chat.module';
@@ -10,13 +9,11 @@ import {FriendModule} from './friend/friend.module';
 import {WsSocketModule} from './webSocket/WsSocket/WsSocket.module';
 import {WsConnectionModule} from './webSocket/WsConnection/WsConnection.module';
 import {JwtModule} from './jwt/jwt.module';
+import {ImageModule} from './image/image.module';
+import {HashManagerModule} from './hashManager/hashManager.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      envFilePath: '.env',
-      isGlobal: true,
-    }),
     PrismaModule,
     WebSocketModule,
     WsSocketModule,
@@ -27,6 +24,8 @@ import {JwtModule} from './jwt/jwt.module';
     InvitationModule,
     FriendModule,
     JwtModule,
+    ImageModule,
+    HashManagerModule,
   ],
 })
 export class AppModule {}

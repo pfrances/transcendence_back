@@ -20,9 +20,10 @@ export class JwtService {
     try {
       this.jwt.verify(authToken);
       return this.decodeToken(authToken);
-    } catch (err) {
+    } catch (err: any) {
       if (ctx === 'http') throw new UnauthorizedException(err);
       if (ctx === 'ws') throw new WsException(err);
+      throw err;
     }
   }
 }

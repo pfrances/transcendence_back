@@ -1,8 +1,7 @@
-import {Injectable, UnauthorizedException} from '@nestjs/common';
+import {Injectable} from '@nestjs/common';
 import {JwtTokenPayload} from './interface';
 import {SignInDto, SignUpDto} from './dto';
 import {UserService} from 'src/user/user.service';
-import {WsException} from '@nestjs/websockets';
 import {HttpSignUp} from 'src/shared/HttpEndpoints/auth';
 import {JwtService} from 'src/jwt/jwt.service';
 
