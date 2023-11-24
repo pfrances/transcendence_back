@@ -17,11 +17,13 @@ export class AuthService {
   }
 
   async signup(dto: SignUpDto): Promise<HttpSignUp.resTemplate> {
-    return await this.userService.createUser(dto);
+    const userInfo = await this.userService.createUser(dto);
+    const authToken = await this.createAuthToken(userInfo);
+    return {...userInfo, authToken};
   }
 
   async signin(dto: SignInDto): Promise<string> {
     const jwtPayload = await this.userService.verifyUserCredential(dto);
-    return await this.jwt.createAuthToken(jwtPayload);
+    return await this.createAuthToken(jwtPayload);
   }
 }
