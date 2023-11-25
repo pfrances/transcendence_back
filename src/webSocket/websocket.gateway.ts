@@ -11,7 +11,7 @@ import {WsConnectionService} from './WsConnection/WsConnection.service';
 import {WsRoomService} from './WsRoom/WsRoom.service';
 import {JwtService} from 'src/jwt/jwt.service';
 
-@WebSocketGateway()
+@WebSocketGateway({cors: true})
 export class SocketMonitorGateway
   implements OnGatewayInit, OnGatewayDisconnect, OnGatewayConnection
 {
