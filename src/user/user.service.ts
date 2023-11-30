@@ -26,7 +26,6 @@ export class UserService {
     const users = await this.prisma.profile.findMany({
       select: {userId: true, nickname: true, avatarUrl: true},
     });
-    if (!users) throw new Error('no user found');
     return users;
   }
 
