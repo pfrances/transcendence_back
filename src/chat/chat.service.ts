@@ -8,12 +8,18 @@ import {PrismaService} from '../prisma/prisma.service';
 import {CreateChatDto, SendMessageDto} from 'src/chat/dto';
 import {JoinChat, LeaveChat, UpdateChat} from 'src/chat/interface';
 import {Role} from '@prisma/client';
-import {HttpCreateChat, HttpGetAllMessage, HttpGetChatInfo} from 'src/shared/HttpEndpoints/chat';
+import {
+  HttpCreateChat,
+  HttpGetAllChats,
+  HttpGetAllMessage,
+  HttpGetChatInfo,
+} from 'src/shared/HttpEndpoints/chat';
 import {WsChatJoin, WsChatLeave, WsChat_FromServer, WsNewMessage} from 'src/shared/WsEvents/chat';
 import {RoomNamePrefix} from 'src/webSocket/WsRoom/interface';
 import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
 import {WsException} from '@nestjs/websockets';
 import {HashManagerService} from 'src/hashManager/hashManager.service';
+import {ChatInfo} from 'src/shared/HttpEndpoints/interfaces';
 
 @Injectable()
 export class ChatService {
@@ -196,6 +202,34 @@ export class ChatService {
     const {password, ...chatInfo} = chat;
     return {...chatInfo, hasPassword};
   }
+
+  async getAllChats(): Promise<HttpGetAllChats.resTemplate> {
+    const chats = await this.prisma.chat.findMany({
+      select: {
+        participants: {
+          select: {
+            userProfile: {select: {userId: true, nickname: true, avatarUrl: true}},
+            role: true,
+            mutedUntil: true,
+            blockedUntil: true,
+            hasLeaved: true,
+          },
+        },
+        chatId: true,
+        name: true,
+        chatAvatarUrl: true,
+        password: true,
+      },
+    });
+    const chatList: ChatInfo[] = [];
+    for (const chat of chats) {
+      const hasPassword = chat?.password ? true : false;
+      const {password, ...chatInfo} = chat;
+      chatList.push({hasPassword, ...chatInfo});
+    }
+    return {chats: chatList};
+  }
+
   async sendMessage(userId: number, {chatId, messageContent}: SendMessageDto): Promise<void> {
     const participation = await this.prisma.chatParticipation.findUnique({
       where: {chatId_userId: {chatId, userId}},

@@ -17,6 +17,7 @@ import {JwtAuthGuard} from 'src/auth/guard';
 import {
   HttpChat,
   HttpCreateChat,
+  HttpGetAllChats,
   HttpGetAllMessage,
   HttpGetChatInfo,
   HttpJoinChat,
@@ -28,6 +29,11 @@ import {
 @UseGuards(JwtAuthGuard)
 export class ChatController {
   constructor(private readonly chat: ChatService) {}
+
+  @Get(HttpGetAllChats.endPoint)
+  async getAllChats(): Promise<HttpGetAllChats.resTemplate> {
+    return this.chat.getAllChats();
+  }
 
   @Get(HttpGetAllMessage.endPoint)
   async getAllMessage(
