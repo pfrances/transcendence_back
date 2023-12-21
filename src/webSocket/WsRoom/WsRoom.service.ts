@@ -44,28 +44,32 @@ export class WsRoomService {
   }
 
   addUserToRoom(data: JoinLeaveRoom): void {
-    const client = WsSocketService.getClientSocketByUserId(data.userId);
-    if (client) {
+    const clients = WsSocketService.getClientSocketsByUserId(data.userId);
+    if (clients && clients.length > 0) {
       const roomName = this.getRoomNameFromTemplate(data);
-      client.join(roomName);
+      clients.forEach(client => client.join(roomName));
       this.addUserToRoomMap(roomName, data.userId);
     }
   }
 
   removeUserFromRoom(data: JoinLeaveRoom): void {
-    const client = WsSocketService.getClientSocketByUserId(data.userId);
-    if (client) {
-      const roomName = this.getRoomNameFromTemplate(data);
-      client.leave(roomName);
-      this.removeUserFromRoomMap(roomName, data.userId);
-    }
+    const clients = WsSocketService.getClientSocketsByUserId(data.userId);
+    clients?.forEach(client => {
+      if (client) {
+        const roomName = this.getRoomNameFromTemplate(data);
+        client.leave(roomName);
+        this.removeUserFromRoomMap(roomName, data.userId);
+      }
+    });
   }
 
   sendMessageInRoom(data: SendMessageInRoom): void {
     const roomName = this.getRoomNameFromTemplate(data);
-    const socket = WsSocketService.getClientSocketByUserId(data.senderId) ?? WsRoomService.server;
+    const sockets = WsSocketService.getClientSocketsByUserId(data.senderId) ?? [
+      WsRoomService.server,
+    ];
     if (this.getNbClientsInRoom(roomName) > 0) {
-      socket.to(roomName).emit(data.eventName, data.message);
+      sockets.forEach(socket => socket.to(roomName).emit(data.eventName, data.message));
     }
   }
 
@@ -76,9 +80,9 @@ export class WsRoomService {
   }
 
   sendMessageToUser(userId: number, dto: WsEvents_FromServer.template): void {
-    const client = WsSocketService.getClientSocketByUserId(userId);
-    if (client) {
-      client.emit(dto.eventName, dto.message);
-    }
+    const clientIds = WsSocketService.getClientSocketsByUserId(userId);
+    clientIds?.forEach(client => {
+      if (client) client.emit(dto.eventName, dto.message);
+    });
   }
 }
