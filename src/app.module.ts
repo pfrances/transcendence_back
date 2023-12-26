@@ -11,7 +11,7 @@ import {WsConnectionModule} from './webSocket/WsConnection/WsConnection.module';
 import {JwtModule} from './jwt/jwt.module';
 import {ImageModule} from './image/image.module';
 import {HashManagerModule} from './hashManager/hashManager.module';
-// import {MailModule} from './mail/mail.module';
+import {MailModule} from './mail/mail.module';
 
 @Module({
   imports: [
@@ -27,7 +27,7 @@ import {HashManagerModule} from './hashManager/hashManager.module';
     JwtModule,
     ImageModule,
     HashManagerModule,
-    //MailModule,
+    MailModule,
   ],
 })
 export class AppModule {}
