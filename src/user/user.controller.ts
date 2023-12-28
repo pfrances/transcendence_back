@@ -19,7 +19,7 @@ export class UserController {
 
   @Get(HttpGetMe.endPoint)
   async getMe(@GetInfoFromJwt('userId') userId: number): Promise<HttpGetMe.resTemplate> {
-    return await this.userService.getUserPublicInfo({userId});
+    return await this.userService.getUserPrivateInfo({userId});
   }
 
   @Get(HttpAllUsers.endPoint)

@@ -1,5 +1,5 @@
 export interface FortyTwoProfile {
-  id: number;
+  user42Id: number;
   email: string;
-  login: string;
+  nickname: string;
 }

@@ -1,17 +1,9 @@
-import {ExecutionContext, Injectable, UnauthorizedException} from '@nestjs/common';
+import {Injectable} from '@nestjs/common';
 import {AuthGuard} from '@nestjs/passport';
 
 @Injectable()
-export class FortyTwoAuthGuard extends AuthGuard('42') {
+export class FortyTwoAuthGuard extends AuthGuard('42auth') {
   constructor() {
     super();
-  }
-
-  async canActivate(context: ExecutionContext): Promise<any> {
-    try {
-      return await super.canActivate(context);
-    } catch (err: any) {
-      throw new UnauthorizedException(err?.code ?? 'invalid access');
-    }
   }
 }

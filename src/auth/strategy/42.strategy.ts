@@ -3,33 +3,36 @@ import {PassportStrategy} from '@nestjs/passport';
 import {Strategy} from 'passport-42';
 import {UserService} from 'src/user/user.service';
 import {FortyTwoProfile} from '../interface';
-import {UserPublicProfile} from 'src/shared/HttpEndpoints/interfaces';
+import {UserPrivateProfile} from 'src/shared/HttpEndpoints/interfaces';
 
 @Injectable()
-export class FortyTwoStrategy extends PassportStrategy(Strategy, '42') {
+export class FortyTwoStrategy extends PassportStrategy(Strategy, '42auth') {
   constructor(private readonly userService: UserService) {
     super({
       clientID: process.env.OAUTH42_CLIENT_ID,
       clientSecret: process.env.OAUTH42_SECRET,
       callbackURL: process.env.OAUTH42_REDIRECT_URI,
+      scope: 'public',
       profileFields: {
-        id: 'id',
-        username: 'login',
+        user42Id: 'id',
+        nickname: 'login',
         email: 'email',
       },
     });
   }
-  async validate(profile: any): Promise<UserPublicProfile> {
-    if (Date.now() > profile?.expires_at)
-      throw new UnauthorizedException('Access token is expired.');
-    const userInfo: FortyTwoProfile = {...profile?._json};
-    if (!userInfo?.id) throw new UnauthorizedException('Id is missing in the user profile.');
+
+  async validate(
+    // @ts-ignore
+    accessToken: string,
+    // @ts-ignore
+    refreshToken: string,
+    profile: FortyTwoProfile,
+  ): Promise<UserPrivateProfile> {
+    const {user42Id, email, nickname} = profile;
+    if (!profile || !user42Id || !email || !nickname)
+      throw new UnauthorizedException('Unable to get 42 data.');
     try {
-      const user = await this.userService.getOrCreateUser(
-        {user42Id: userInfo.id},
-        {user42Id: userInfo.id, email: userInfo.email, nickname: userInfo.login},
-      );
-      return user;
+      return await this.userService.getOrCreateUser({user42Id}, {user42Id, email, nickname}, true);
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new UnauthorizedException(err);

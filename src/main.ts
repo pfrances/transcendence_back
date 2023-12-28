@@ -1,4 +1,3 @@
-import 'reflect-metadata';
 import {NestFactory} from '@nestjs/core';
 import {AppModule} from './app.module';
 import {ValidationPipe} from '@nestjs/common';
@@ -9,7 +8,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({whitelist: true}));
   app.use(
     cors({
-      origin: process.env.NODE_ENV === 'TEST' ? '*' : 'http://localhost:3000',
+      origin: process.env.NODE_ENV === 'TEST' ? '*' : process.env.FRONTEND_URL,
       methods: ['GET', 'POST', 'PATCH', 'DELETE'],
       credentials: true,
     }),
