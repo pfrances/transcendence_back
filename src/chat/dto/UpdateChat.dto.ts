@@ -12,8 +12,7 @@ export class UpdateChatDto {
   password?: string;
 
   @IsOptional()
-  @IsNotEmpty()
-  chatAvatarUrl?: string;
+  chatAvatar?: Express.Multer.File;
 
   @IsOptional()
   @IsArray()
@@ -25,10 +24,10 @@ export class UpdateChatDto {
     kick?: boolean;
   }[];
 
-  constructor(data: HttpUpdateChat.reqTemplate) {
+  constructor(data: HttpUpdateChat.reqTemplate & {chatAvatar?: Express.Multer.File}) {
     this.name = data?.name;
     this.password = data?.password;
-    this.chatAvatarUrl = data?.chatAvatarUrl;
+    this.chatAvatar = data?.chatAvatar;
     this.participants = data?.participants;
   }
 }

@@ -1,6 +1,9 @@
-import {IsEmail, IsNotEmpty, IsOptional, IsString, IsUrl} from 'class-validator';
+import {UseInterceptors} from '@nestjs/common';
+import {FileInterceptor} from '@nestjs/platform-express';
+import {IsEmail, IsNotEmpty, IsOptional, IsString} from 'class-validator';
 import {HttpSignUp} from 'src/shared/HttpEndpoints/auth';
 
+@UseInterceptors(FileInterceptor('avatar'))
 export class SignUpDto {
   @IsString()
   @IsNotEmpty()
@@ -14,14 +17,13 @@ export class SignUpDto {
   @IsNotEmpty()
   password: string;
 
-  @IsUrl()
   @IsOptional()
-  avatarUrl?: string;
+  avatar?: Express.Multer.File;
 
-  constructor(dto: HttpSignUp.reqTemplate) {
+  constructor(dto: HttpSignUp.reqTemplate & {avatar?: Express.Multer.File}) {
     this.nickname = dto?.nickname;
     this.email = dto?.email;
     this.password = dto?.password;
-    this.avatarUrl = dto?.avatarUrl;
+    this.avatar = dto?.avatar;
   }
 }

@@ -12,9 +12,14 @@ import {JwtModule} from './jwt/jwt.module';
 import {ImageModule} from './image/image.module';
 import {HashManagerModule} from './hashManager/hashManager.module';
 import {MailModule} from './mail/mail.module';
+import {ConfigModule} from '@nestjs/config';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+    }),
     PrismaModule,
     WebSocketModule,
     WsSocketModule,

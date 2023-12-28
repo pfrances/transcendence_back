@@ -20,6 +20,8 @@ import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
 import {WsException} from '@nestjs/websockets';
 import {HashManagerService} from 'src/hashManager/hashManager.service';
 import {ChatInfo} from 'src/shared/HttpEndpoints/interfaces';
+import {ImageService} from 'src/image/image.service';
+import {filterDefinedProperties} from 'src/shared/sharedUtilities/utils.functions.';
 
 @Injectable()
 export class ChatService {
@@ -27,6 +29,7 @@ export class ChatService {
     private readonly prisma: PrismaService,
     private readonly room: WsRoomService,
     private readonly hashManager: HashManagerService,
+    private readonly image: ImageService,
   ) {}
   private readonly prefix: RoomNamePrefix = 'Chatroom-';
 
@@ -39,8 +42,17 @@ export class ChatService {
   }
 
   async createChat(userId: number, dto: CreateChatDto): Promise<HttpCreateChat.resTemplate> {
+    let chatAvatarUrl: string | undefined;
+    const {chatAvatar, ...createChatData} = dto;
+    if (chatAvatar)
+      chatAvatarUrl = await this.image.uploadFile(chatAvatar.originalname, chatAvatar.buffer);
+    if (createChatData.password)
+      dto.password = await this.hashManager.hash(createChatData.password);
     const chat = await this.prisma.chat.create({
-      data: {...dto, participants: {create: {userId, role: 'ADMIN'}}},
+      data: {
+        ...filterDefinedProperties({...createChatData, chatAvatarUrl}),
+        participants: {create: {userId, role: 'ADMIN'}},
+      },
       select: {
         chatId: true,
         name: true,
@@ -63,7 +75,8 @@ export class ChatService {
   }
 
   async updateChat(dto: UpdateChat): Promise<void> {
-    const {chatId, userId, participants, ...chatInfo} = dto;
+    let chatAvatarUrl: string | undefined;
+    const {chatId, userId, participants, chatAvatar, ...chatInfo} = dto;
     const adminParticipation = await this.prisma.chatParticipation.findUnique({
       where: {chatId_userId: {chatId: dto.chatId, userId: dto.userId}},
       select: {role: true, hasLeaved: true},
@@ -76,9 +89,11 @@ export class ChatService {
       throw new UnauthorizedException('This user has leaved the chat');
     if (Object.keys(chatInfo).length) {
       if (chatInfo.password) chatInfo.password = await this.hashManager.hash(chatInfo.password);
+      if (chatAvatar)
+        chatAvatarUrl = await this.image.uploadFile(chatAvatar.originalname, chatAvatar.buffer);
       await this.prisma.chat.update({
         where: {chatId},
-        data: {...chatInfo},
+        data: {...filterDefinedProperties({...chatInfo, chatAvatarUrl})},
       });
     }
 

@@ -1,12 +1,17 @@
 import {
   Body,
   Controller,
+  FileTypeValidator,
   Get,
+  MaxFileSizeValidator,
+  ParseFilePipe,
   Post,
   Req,
   Res,
   UnauthorizedException,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {AuthService} from './auth.service';
 import {FortyTwoAuthGuard} from './guard';
@@ -23,6 +28,7 @@ import {Request, Response} from 'express';
 import {Auth2FADto} from './dto/Auth2fa.dto';
 import {Resend2FADto} from './dto/Resend2fa.dto';
 import {UserPrivateProfile} from 'src/shared/HttpEndpoints/interfaces';
+import {FileInterceptor} from '@nestjs/platform-express';
 
 @Controller(HttpAuth.endPointBase)
 export class AuthController {
@@ -43,8 +49,22 @@ export class AuthController {
     res.redirect(`http://localhost:3000/auth/?auth2FACode=${auth2FACode}&userId=${userId}`);
   }
 
+  @UseInterceptors(FileInterceptor('avatar'))
   @Post(HttpSignUp.endPoint)
-  async signup(@Body() dto: SignUpDto): Promise<HttpSignUp.resTemplate> {
+  async signup(
+    @Body() dto: SignUpDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({maxSize: 1024 * 1024}),
+          new FileTypeValidator({fileType: 'image/*'}),
+        ],
+        fileIsRequired: false,
+      }),
+    )
+    avatar: Express.Multer.File,
+  ): Promise<HttpSignUp.resTemplate> {
+    dto.avatar = avatar;
     const resBody = await this.authService.signup(dto);
     return new HttpSignUp.resTemplate(resBody);
   }

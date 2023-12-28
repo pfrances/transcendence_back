@@ -1,14 +1,19 @@
 import {
   Body,
   Controller,
+  FileTypeValidator,
   Get,
+  MaxFileSizeValidator,
   Param,
+  ParseFilePipe,
   ParseIntPipe,
   Patch,
   Post,
   Query,
   UnprocessableEntityException,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {ChatService} from './chat.service';
 import {GetInfoFromJwt} from 'src/decorator';
@@ -24,6 +29,7 @@ import {
   HttpLeaveChat,
   HttpUpdateChat,
 } from 'src/shared/HttpEndpoints/chat';
+import {FileInterceptor} from '@nestjs/platform-express';
 
 @Controller(HttpChat.endPointBase)
 @UseGuards(JwtAuthGuard)
@@ -43,11 +49,23 @@ export class ChatController {
     return this.chat.getAllMessagesFromChatId(userId, chatId);
   }
 
+  @UseInterceptors(FileInterceptor('chatAvatar'))
   @Post(HttpCreateChat.endPoint)
   async createChat(
     @GetInfoFromJwt('userId') userId: number,
     @Body() dto: CreateChatDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({maxSize: 1024 * 1024}),
+          new FileTypeValidator({fileType: 'image/*'}),
+        ],
+        fileIsRequired: false,
+      }),
+    )
+    chatAvatar: Express.Multer.File,
   ): Promise<HttpCreateChat.resTemplate> {
+    if (chatAvatar) dto.chatAvatar = chatAvatar;
     return this.chat.createChat(userId, dto);
   }
 
@@ -77,13 +95,25 @@ export class ChatController {
     return this.chat.getChatInfo(chatId);
   }
 
+  @UseInterceptors(FileInterceptor('chatAvatar'))
   @Patch(HttpUpdateChat.endPoint)
   async updateChat(
     @GetInfoFromJwt('userId') userId: number,
     @Param('chatId', ParseIntPipe) chatId: number,
     @Body() dto: UpdateChatDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({maxSize: 1024 * 1024}),
+          new FileTypeValidator({fileType: 'image/*'}),
+        ],
+        fileIsRequired: false,
+      }),
+    )
+    chatAvatar: Express.Multer.File,
   ): Promise<HttpUpdateChat.resTemplate> {
     if (!Object.keys(dto).length) throw new UnprocessableEntityException('no data to update');
+    if (chatAvatar) dto.chatAvatar = chatAvatar;
     await this.chat.updateChat({...dto, userId, chatId});
     return this.chat.getChatInfo(chatId);
   }

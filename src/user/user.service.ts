@@ -11,12 +11,15 @@ import {SignInDto} from 'src/auth/dto';
 import {UserPrivateProfile, UserPublicProfile} from 'src/shared/HttpEndpoints/interfaces';
 import {PrismaClientKnownRequestError} from '@prisma/client/runtime/library';
 import {HashManagerService} from 'src/hashManager/hashManager.service';
+import {ImageService} from 'src/image/image.service';
+import {filterDefinedProperties} from 'src/shared/sharedUtilities/utils.functions.';
 
 @Injectable()
 export class UserService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly hashManager: HashManagerService,
+    private readonly image: ImageService,
   ) {}
 
   async getUserIdByNickname(nickname: string): Promise<number> {
@@ -36,14 +39,16 @@ export class UserService {
     userInfo: GetUserBy42Id | GetUserById,
     dto: EditUserDto,
   ): Promise<UserPrivateProfile> {
+    let avatarUrl: string | undefined;
+    if (dto.avatar)
+      avatarUrl = await this.image.uploadFile(dto.avatar.originalname, dto.avatar.buffer);
     try {
       if (dto.password) dto.password = await this.hashManager.hash(dto.password);
       const userModelInfo = {email: dto.email, password: dto.password};
-      const profileModelInfo = {nickname: dto.nickname, avatarUrl: dto.avatarUrl};
-      let findInfo = {...userInfo};
+      const profileModelInfo = {nickname: dto.nickname, avatarUrl};
 
       const user = await this.prisma.user.update({
-        where: {...findInfo},
+        where: {...filterDefinedProperties(userInfo)},
         select: {
           email: true,
           profile: {select: {userId: true, nickname: true, avatarUrl: true}},
@@ -117,14 +122,19 @@ export class UserService {
   }
 
   async createUser(dto: CreateUserTemplate): Promise<UserPrivateProfile> {
+    if ('password' in dto) dto.password = await this.hashManager.hash(dto.password);
+    const {nickname, avatar, ...userInfo} = dto;
+
+    let avatarUrl: string | undefined;
+    if (avatar) avatarUrl = await this.image.uploadFile(avatar.originalname, avatar.buffer);
+
     try {
-      if ('password' in dto) dto.password = await this.hashManager.hash(dto.password);
-      const {nickname, avatarUrl, ...userInfo} = dto;
       const profile = await this.prisma.profile.create({
         data: {user: {create: {...userInfo}}, nickname, avatarUrl},
         select: {userId: true, nickname: true, avatarUrl: true, user: {select: {email: true}}},
       });
       if (!profile) throw new Error('unable to create the user');
+
       return {...profile, email: profile.user.email};
     } catch (err: PrismaClientKnownRequestError | any) {
       if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002')
