@@ -29,10 +29,18 @@ import {Auth2FADto} from './dto/Auth2fa.dto';
 import {Resend2FADto} from './dto/Resend2fa.dto';
 import {UserPrivateProfile} from 'src/shared/HttpEndpoints/interfaces';
 import {FileInterceptor} from '@nestjs/platform-express';
+import {ConfigService} from '@nestjs/config';
 
 @Controller(HttpAuth.endPointBase)
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  private readonly frontUrl: string;
+
+  constructor(
+    private readonly authService: AuthService,
+    private readonly config: ConfigService,
+  ) {
+    this.frontUrl = this.config.getOrThrow('FRONTEND_URL');
+  }
 
   @Get(HttpAuth42.endPoint)
   @UseGuards(FortyTwoAuthGuard)
@@ -46,7 +54,7 @@ export class AuthController {
     const {auth2FACode, userId} = await this.authService.handle42Callback(
       req.user as UserPrivateProfile,
     );
-    res.redirect(`http://localhost:3000/auth/?auth2FACode=${auth2FACode}&userId=${userId}`);
+    res.redirect(301, `${this.frontUrl}/auth?auth2FACode=${auth2FACode}&userId=${userId}`);
   }
 
   @UseInterceptors(FileInterceptor('avatar'))
