@@ -2,12 +2,12 @@ import {IsInt, IsNotEmpty, IsString} from 'class-validator';
 import {Http2FA} from 'src/shared/HttpEndpoints/auth';
 
 export class Auth2FADto {
-  @IsString()
   @IsNotEmpty()
+  @IsString()
   auth2FACode: string;
 
-  @IsString()
   @IsNotEmpty()
+  @IsString()
   auth2FAConfirmCode: string;
 
   @IsNotEmpty()

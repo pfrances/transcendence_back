@@ -1,14 +1,12 @@
 import {Role} from '@prisma/client';
-import {IsArray, IsNotEmpty, IsOptional} from 'class-validator';
+import {IsArray, IsOptional} from 'class-validator';
 import {HttpUpdateChat} from 'src/shared/HttpEndpoints/chat';
 
 export class UpdateChatDto {
   @IsOptional()
-  @IsNotEmpty()
   name?: string;
 
   @IsOptional()
-  @IsNotEmpty()
   password?: string;
 
   @IsOptional()

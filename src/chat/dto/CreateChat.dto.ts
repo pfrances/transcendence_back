@@ -10,7 +10,6 @@ export class CreateChatDto {
   chatAvatar?: Express.Multer.File;
 
   @IsOptional()
-  @IsNotEmpty()
   @IsString()
   password?: string;
 

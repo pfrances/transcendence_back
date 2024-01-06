@@ -9,7 +9,6 @@ import {
   ParseIntPipe,
   Patch,
   Post,
-  Query,
   UnprocessableEntityException,
   UploadedFile,
   UseGuards,
@@ -44,7 +43,7 @@ export class ChatController {
   @Get(HttpGetAllMessage.endPoint)
   async getAllMessage(
     @GetInfoFromJwt('userId') userId: number,
-    @Query('chatId', ParseIntPipe) chatId: number,
+    @Param('chatId', ParseIntPipe) chatId: number,
   ): Promise<HttpGetAllMessage.resTemplate> {
     return this.chat.getAllMessagesFromChatId(userId, chatId);
   }
@@ -71,7 +70,7 @@ export class ChatController {
 
   @Get(HttpGetChatInfo.endPoint)
   async getChatInfo(
-    @Query('chatId', ParseIntPipe) chatId: number,
+    @Param('chatId', ParseIntPipe) chatId: number,
   ): Promise<HttpGetChatInfo.resTemplate> {
     return this.chat.getChatInfo(chatId);
   }

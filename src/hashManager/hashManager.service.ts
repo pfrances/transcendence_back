@@ -13,6 +13,10 @@ export class HashManagerService {
   ): Promise<boolean> {
     if (!hash) return plainText ? false : true;
     if (!plainText) return false;
-    return await argon2.verify(hash, plainText);
+    try {
+      return await argon2.verify(hash, plainText);
+    } catch (err) {
+      return false;
+    }
   }
 }

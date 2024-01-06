@@ -5,16 +5,16 @@ import {HttpSignUp} from 'src/shared/HttpEndpoints/auth';
 
 @UseInterceptors(FileInterceptor('avatar'))
 export class SignUpDto {
-  @IsString()
   @IsNotEmpty()
+  @IsString()
   nickname: string;
 
-  @IsEmail()
   @IsNotEmpty()
+  @IsEmail()
   email: string;
 
-  @IsString()
   @IsNotEmpty()
+  @IsString()
   password: string;
 
   @IsOptional()

@@ -4,12 +4,12 @@ export class SendInvitationDto {
   @IsNumber()
   targetUserId: number;
 
-  @IsNumber()
   @IsOptional()
+  @IsNumber()
   targetChatId?: number;
 
-  @IsNumber()
   @IsOptional()
+  @IsNumber()
   targetGameId?: number;
 
   constructor(dto: SendInvitationDto) {

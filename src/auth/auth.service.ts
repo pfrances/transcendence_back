@@ -8,6 +8,7 @@ import {MailService} from 'src/mail/mail.service';
 import {SendingMailInterface} from 'src/mail/interface/mail.interface';
 import {Resend2FADto} from './dto/Resend2fa.dto';
 import {UserPrivateProfile} from 'src/shared/HttpEndpoints/interfaces';
+import {RefreshJwt} from 'src/jwt/interface/refreshJwt';
 
 @Injectable()
 export class AuthService {
@@ -42,8 +43,9 @@ export class AuthService {
     if (confirmCode !== dto.auth2FAConfirmCode) throw new ForbiddenException('invalid code');
     const userInfo = await this.user.getUserPrivateInfo({userId: dto.userId});
     const authToken = await this.jwt.createAuthToken(userInfo);
+    const refreshToken = await this.jwt.createRefreshToken(userInfo);
     AuthService.auth2FA_map.delete(dto.auth2FACode);
-    return {authToken, userInfo};
+    return {authToken, userInfo, refreshToken};
   }
 
   async resend2FA(dto: Resend2FADto): Promise<void> {
@@ -69,5 +71,9 @@ export class AuthService {
       result += characters.charAt(Math.floor(Math.random() * charactersLength));
     }
     return result;
+  }
+
+  public refreshAccessToken(refreshToken: string, authToken: string): Promise<RefreshJwt> {
+    return this.jwt.refreshAccessToken(refreshToken, authToken);
   }
 }

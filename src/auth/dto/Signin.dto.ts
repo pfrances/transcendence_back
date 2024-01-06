@@ -2,12 +2,12 @@ import {IsNotEmpty, IsString} from 'class-validator';
 import {HttpSignIn} from 'src/shared/HttpEndpoints/auth';
 
 export class SignInDto {
-  @IsString()
   @IsNotEmpty()
+  @IsString()
   nickname: string;
 
-  @IsString()
   @IsNotEmpty()
+  @IsString()
   password: string;
 
   constructor(dto: HttpSignIn.reqTemplate) {

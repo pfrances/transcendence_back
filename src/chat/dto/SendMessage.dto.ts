@@ -5,8 +5,8 @@ export class SendMessageDto {
   @IsNumber()
   chatId: number;
 
-  @IsString()
   @IsNotEmpty()
+  @IsString()
   messageContent: string;
 
   constructor(data: WsSendMessage.eventMessageTemplate) {

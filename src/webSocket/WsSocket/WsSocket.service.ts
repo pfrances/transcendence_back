@@ -10,8 +10,7 @@ export class WsSocketService {
 
   static getClientSocketsByUserId(userId: number): Socket[] {
     const clientSocket = WsSocketService.ClientSocketMap.get(userId);
-    if (!clientSocket) throw new Error('client socket not found');
-    return clientSocket;
+    return clientSocket ?? [];
   }
 
   static getUserIdByClientSocketId(socketId: string): number {

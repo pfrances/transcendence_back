@@ -20,6 +20,7 @@ import {
   Http2FA,
   HttpAuth,
   HttpAuth42,
+  HttpRefresh,
   HttpResend2FA,
   HttpSignIn,
   HttpSignUp,
@@ -90,5 +91,12 @@ export class AuthController {
   @Post(HttpResend2FA.endPoint)
   async resend2FA(@Body() dto: Resend2FADto): Promise<void> {
     await this.authService.resend2FA(dto);
+  }
+
+  @Post(HttpRefresh.endPoint)
+  async refresh(
+    @Body() {authToken, refreshToken}: HttpRefresh.reqTemplate,
+  ): Promise<HttpRefresh.resTemplate> {
+    return await this.authService.refreshAccessToken(refreshToken, authToken);
   }
 }
