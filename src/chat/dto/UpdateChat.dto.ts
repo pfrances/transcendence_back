@@ -4,7 +4,7 @@ import {HttpUpdateChat} from 'src/shared/HttpEndpoints/chat';
 
 export class UpdateChatDto {
   @IsOptional()
-  name?: string;
+  chatName?: string;
 
   @IsOptional()
   password?: string;
@@ -16,14 +16,14 @@ export class UpdateChatDto {
   @IsArray()
   participants?: {
     userId: number;
-    targetRole?: Role;
-    muteUntil?: Date;
-    blockUntil?: Date;
+    role?: Role;
+    mutedUntil?: Date;
+    blockedUntil?: Date;
     kick?: boolean;
   }[];
 
   constructor(data: HttpUpdateChat.reqTemplate & {chatAvatar?: Express.Multer.File}) {
-    this.name = data?.name;
+    this.chatName = data?.chatName;
     this.password = data?.password;
     this.chatAvatar = data?.chatAvatar;
     this.participants = data?.participants;

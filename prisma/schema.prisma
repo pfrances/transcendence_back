@@ -14,6 +14,7 @@ model User {
   password String?
 
   profile Profile? @relation("profile")
+  friends Friend[] @relation("friend")
 
   sentInvitations     Invitation[] @relation("SentInvitations")
   receivedInvitations Invitation[] @relation("ReceivedInvitations")
@@ -22,15 +23,24 @@ model User {
 }
 
 model Profile {
-  userId             Int                 @id
+  userId             Int             @id
   user               User                @relation("profile", fields: [userId], references: [userId], onDelete: Cascade)
   nickname           String              @unique
   avatarUrl          String?
-  friendUserIds      Int[]
-  friendsProfiles    Profile[]           @relation("friends")
-  friendsOf          Profile[]           @relation("friends")
+  Friends            Friend[]            @relation("friendOf")
   chatParticipations ChatParticipation[]
   gameParticipations GameParticipation[]
+}
+
+model Friend {
+  userId   Int
+  friendId Int
+
+  user   User @relation("friend", fields: [userId], references: [userId], onDelete: Cascade)
+  friend Profile @relation("friendOf", fields: [friendId], references: [userId], onDelete: Cascade)
+
+  @@id([userId, friendId])
+  @@map("Friends")
 }
 
 model Invitation {
@@ -69,12 +79,13 @@ enum InvitationKind {
 model Chat {
   chatId Int @id @default(autoincrement())
 
-  name          String
+  chatName      String
   chatAvatarUrl String?
   password      String?
 
   invitations  Invitation[]
   participants ChatParticipation[]
+  messages     Message[]
 
   @@map("Chats")
 }
@@ -84,8 +95,8 @@ model Message {
   createdAt DateTime @default(now())
 
   chatId            Int
+  chat              Chat @relation(fields: [chatId], references: [chatId], onDelete: Cascade)
   userId            Int
-  chatParticipation ChatParticipation @relation(fields: [chatId, userId], references: [chatId, userId], onDelete: Cascade)
   messageContent    String
 
   @@map("Messages")
@@ -95,9 +106,6 @@ model ChatParticipation {
   role         Role      @default(MEMBER)
   mutedUntil   DateTime?
   blockedUntil DateTime?
-  hasLeaved    Boolean   @default(false)
-
-  messages Message[]
 
   chatId Int
   chat   Chat @relation(fields: [chatId], references: [chatId], onDelete: Cascade)

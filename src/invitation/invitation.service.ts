@@ -4,9 +4,10 @@ import {SendInvitation, UpdateInvitationStatus} from './interface';
 import {ChatService} from 'src/chat/chat.service';
 import {FriendService} from 'src/friend/friend.service';
 import {HandleUpdatedInvitationRelatedEvent} from 'src/friend/interface/handleUpdatedInvitationRelatedEvent.template';
-import {HttpSendInvitation, HttpUpdateInvitation} from 'src/shared/HttpEndpoints/invitation';
 import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
 import {WsInvitationUpdated, WsNewInvitation} from 'src/shared/WsEvents/invitation';
+import {InvitationKind} from '@prisma/client';
+import {Invitation} from 'src/shared/HttpEndpoints/interfaces/invitation.interface';
 
 @Injectable()
 export class InvitationsService {
@@ -63,7 +64,7 @@ export class InvitationsService {
     if (pendingInvitation) throw new ConflictException('Invitation already sent');
   }
 
-  async sendInvitation(data: SendInvitation): Promise<HttpSendInvitation.resTemplate> {
+  async sendInvitation(data: SendInvitation): Promise<void> {
     await this.checkSentInvitation(data);
     let {senderId, receiverId, kind, targetChatId, targetGameId} = data;
     try {
@@ -81,18 +82,6 @@ export class InvitationsService {
       });
       const wsDto = new WsNewInvitation.Dto(invitation);
       this.wsRoom.sendMessageToUser(invitation.receiverId, wsDto);
-      let {targetChatId: chatId, targetGameId: gameId, ...invitationToSend} = invitation;
-      if (chatId)
-        invitationToSend = {
-          ...invitationToSend,
-          targetChatId: chatId,
-        } as HttpSendInvitation.resTemplate;
-      if (gameId)
-        invitationToSend = {
-          ...invitationToSend,
-          targetGameId: gameId,
-        } as HttpSendInvitation.resTemplate;
-      return invitation as HttpSendInvitation.resTemplate;
     } catch (err) {
       throw new BadRequestException('No such user');
     }
@@ -107,9 +96,7 @@ export class InvitationsService {
     }
   }
 
-  async updateInvitationStatus(
-    data: UpdateInvitationStatus,
-  ): Promise<HttpUpdateInvitation.resTemplate> {
+  async updateInvitationStatus(data: UpdateInvitationStatus): Promise<void> {
     const {targetStatus, kind, ...dataToSeach} = data;
     try {
       const invitation = await this.prisma.invitation.update({
@@ -125,17 +112,53 @@ export class InvitationsService {
           targetGameId: kind === 'GAME',
         },
       });
-      // if (targetStatus === 'ACCEPTED')
-      //   this.handleUpdatedInvitationRelatedEvent({...invitation, targetStatus, kind});
+      if (targetStatus === 'ACCEPTED')
+        this.handleUpdatedInvitationRelatedEvent({
+          ...invitation,
+          targetStatus,
+        } as HandleUpdatedInvitationRelatedEvent);
       const wsDto = WsInvitationUpdated.createInvitationUpdated(invitation);
       this.wsRoom.sendMessageToUser(
         targetStatus === 'CANCELED' ? invitation.receiverId : invitation.senderId,
         wsDto,
       );
-      return invitation as any;
     } catch (err) {
       if (err instanceof HttpException) throw err;
+      throw new BadRequestException('No such invitation available for this user');
     }
-    throw new BadRequestException('No such invitation available for this user');
+  }
+
+  async getInvitations(userId: number, kind: InvitationKind): Promise<Invitation[]> {
+    const invitations = await this.prisma.invitation.findMany({
+      where: {OR: [{receiverId: userId}, {senderId: userId}], kind, status: 'PENDING'},
+      select: {
+        invitationId: true,
+        kind: true,
+        status: true,
+        targetChatId: kind === 'CHAT',
+        targetGameId: kind === 'GAME',
+        sender: {select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}}},
+        receiver: {select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}}},
+      },
+    });
+
+    const invitationsToSend = invitations.map(invitation => {
+      const {sender, receiver, targetChatId, targetGameId, kind, status, invitationId} = invitation;
+      if (sender.profile === null || receiver.profile === null)
+        throw new BadRequestException('No such user');
+
+      const invitationToSend = {
+        invitationId,
+        kind,
+        status,
+        sender: sender.profile,
+        receiver: receiver.profile,
+        ...(kind === 'CHAT' && targetChatId && {targetChatId}),
+        ...(kind === 'GAME' && targetGameId && {targetGameId}),
+      } as Invitation;
+      return invitationToSend;
+    });
+
+    return invitationsToSend;
   }
 }

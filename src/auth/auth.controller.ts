@@ -15,7 +15,7 @@ import {
 } from '@nestjs/common';
 import {AuthService} from './auth.service';
 import {FortyTwoAuthGuard} from './guard';
-import {SignInDto, SignUpDto} from './dto';
+import {RefreshDto, SignInDto, SignUpDto} from './dto';
 import {
   Http2FA,
   HttpAuth,
@@ -94,9 +94,7 @@ export class AuthController {
   }
 
   @Post(HttpRefresh.endPoint)
-  async refresh(
-    @Body() {authToken, refreshToken}: HttpRefresh.reqTemplate,
-  ): Promise<HttpRefresh.resTemplate> {
+  async refresh(@Body() {authToken, refreshToken}: RefreshDto): Promise<HttpRefresh.resTemplate> {
     return await this.authService.refreshAccessToken(refreshToken, authToken);
   }
 }

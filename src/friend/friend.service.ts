@@ -1,4 +1,4 @@
-import {ConflictException, Injectable} from '@nestjs/common';
+import {ConflictException, Injectable, NotFoundException} from '@nestjs/common';
 import {PrismaService} from 'src/prisma/prisma.service';
 import {SetRelationship} from './interface';
 import {FriendPublicProfilesList} from 'src/shared/HttpEndpoints/interfaces';
@@ -20,29 +20,38 @@ export class FriendService {
   private readonly prefix: RoomNamePrefix = 'Friend_Info-';
 
   async getUserFriendUserIds(userId: number): Promise<number[]> {
-    const profile = await this.prisma.profile.findUnique({
+    const profile = await this.prisma.friend.findMany({
       where: {userId},
-      select: {friendUserIds: true},
+      select: {friendId: true},
     });
     if (!profile) throw new Error(`user with id '${userId}' not found`);
-    return profile.friendUserIds;
+    return profile.map(p => p.friendId);
   }
 
   async getUserFriendProfilesList(userId: number): Promise<FriendPublicProfilesList> {
-    const userProfile = await this.prisma.profile.findUnique({
+    const friends = await this.prisma.friend.findMany({
       where: {userId},
-      select: {friendsProfiles: {select: {userId: true, nickname: true, avatarUrl: true}}},
+      select: {friend: {select: {userId: true, nickname: true, avatarUrl: true}}},
     });
-    if (!userProfile) throw new Error(`user with id '${userId}' not found`);
-    return {friendsProfiles: userProfile.friendsProfiles};
+    return {friendsProfiles: friends.map(f => f.friend)};
   }
 
   private async setSingleRelationship({userId, targetUserId}: SetRelationship): Promise<void> {
-    await this.prisma.profile.update({
-      where: {userId: userId},
-      data: {friendUserIds: {push: targetUserId}},
-    });
+    try {
+      await this.prisma.friend.createMany({
+        data: [
+          {userId, friendId: targetUserId},
+          {
+            userId: targetUserId,
+            friendId: userId,
+          },
+        ],
+      });
+    } catch (e) {
+      throw new ConflictException('friend relationship already exist');
+    }
     this.handleWsFriendEvent(new WsNewFriend.Dto({friendId: targetUserId}));
+    this.handleWsFriendEvent(new WsNewFriend.Dto({friendId: userId}));
   }
 
   async setRelationship({
@@ -50,17 +59,24 @@ export class FriendService {
     targetUserId,
   }: SetRelationship): Promise<FriendPublicProfilesList> {
     await this.setSingleRelationship({userId, targetUserId});
-    await this.setSingleRelationship({targetUserId, userId});
     return this.getUserFriendProfilesList(userId);
   }
 
   private async unsetSingleRelationship({userId, targetUserId}: SetRelationship): Promise<void> {
-    const user1FriendIds = await this.getUserFriendUserIds(userId);
-    await this.prisma.profile.update({
-      where: {userId: userId},
-      data: {friendUserIds: {set: user1FriendIds.filter(id => id !== targetUserId)}},
-    });
+    try {
+      await this.prisma.friend.deleteMany({
+        where: {
+          OR: [
+            {userId, friendId: targetUserId},
+            {userId: targetUserId, friendId: userId},
+          ],
+        },
+      });
+    } catch (e) {
+      throw new NotFoundException('friend relationship not found');
+    }
     this.handleWsFriendEvent(new WsLeftFriend.Dto({friendId: targetUserId}));
+    this.handleWsFriendEvent(new WsLeftFriend.Dto({friendId: userId}));
   }
 
   async unsetRelationship({

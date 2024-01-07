@@ -4,7 +4,7 @@ import {HttpCreateChat} from 'src/shared/HttpEndpoints/chat';
 export class CreateChatDto {
   @IsString()
   @IsNotEmpty()
-  name: string;
+  chatName: string;
 
   @IsOptional()
   chatAvatar?: Express.Multer.File;
@@ -14,7 +14,7 @@ export class CreateChatDto {
   password?: string;
 
   constructor(data: HttpCreateChat.reqTemplate & {chatAvatar?: Express.Multer.File}) {
-    this.name = data?.name;
+    this.chatName = data?.chatName;
     this.chatAvatar = data?.chatAvatar;
     this.password = data?.password;
   }

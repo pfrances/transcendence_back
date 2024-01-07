@@ -22,7 +22,6 @@ import {
   HttpChat,
   HttpCreateChat,
   HttpGetAllChats,
-  HttpGetAllMessage,
   HttpGetChatInfo,
   HttpJoinChat,
   HttpLeaveChat,
@@ -36,16 +35,11 @@ export class ChatController {
   constructor(private readonly chat: ChatService) {}
 
   @Get(HttpGetAllChats.endPoint)
-  async getAllChats(): Promise<HttpGetAllChats.resTemplate> {
-    return this.chat.getAllChats();
-  }
-
-  @Get(HttpGetAllMessage.endPoint)
-  async getAllMessage(
+  async getAllChats(
     @GetInfoFromJwt('userId') userId: number,
-    @Param('chatId', ParseIntPipe) chatId: number,
-  ): Promise<HttpGetAllMessage.resTemplate> {
-    return this.chat.getAllMessagesFromChatId(userId, chatId);
+  ): Promise<HttpGetAllChats.resTemplate> {
+    const chats = await this.chat.getOverviews(userId);
+    return {chats};
   }
 
   @UseInterceptors(FileInterceptor('chatAvatar'))
@@ -65,14 +59,16 @@ export class ChatController {
     chatAvatar: Express.Multer.File,
   ): Promise<HttpCreateChat.resTemplate> {
     if (chatAvatar) dto.chatAvatar = chatAvatar;
-    return this.chat.createChat(userId, dto);
+    this.chat.createChat(userId, dto);
+    return {};
   }
 
   @Get(HttpGetChatInfo.endPoint)
   async getChatInfo(
+    @GetInfoFromJwt('userId') userId: number,
     @Param('chatId', ParseIntPipe) chatId: number,
   ): Promise<HttpGetChatInfo.resTemplate> {
-    return this.chat.getChatInfo(chatId);
+    return this.chat.getChatInfo(userId, chatId);
   }
 
   @Post(HttpJoinChat.endPoint)
@@ -82,7 +78,7 @@ export class ChatController {
     @Body() dto: JoinChatDto,
   ): Promise<HttpJoinChat.resTemplate> {
     await this.chat.joinChat({userId, chatId, ...dto});
-    return this.chat.getChatInfo(chatId);
+    return {};
   }
 
   @Post(HttpLeaveChat.endPoint)
@@ -91,7 +87,7 @@ export class ChatController {
     @Param('chatId', ParseIntPipe) chatId: number,
   ): Promise<HttpLeaveChat.resTemplate> {
     await this.chat.leaveChat({userId, chatId});
-    return this.chat.getChatInfo(chatId);
+    return {};
   }
 
   @UseInterceptors(FileInterceptor('chatAvatar'))
@@ -112,8 +108,10 @@ export class ChatController {
     chatAvatar: Express.Multer.File,
   ): Promise<HttpUpdateChat.resTemplate> {
     if (!Object.keys(dto).length) throw new UnprocessableEntityException('no data to update');
+
     if (chatAvatar) dto.chatAvatar = chatAvatar;
     await this.chat.updateChat({...dto, userId, chatId});
-    return this.chat.getChatInfo(chatId);
+    const chats = await this.chat.getOverviews(userId);
+    return chats[0];
   }
 }

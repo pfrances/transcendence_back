@@ -2,16 +2,16 @@ import {Role} from '@prisma/client';
 
 export interface updateChatParticipant {
   userId: number;
-  targetRole?: Role;
-  muteUntil?: Date;
-  blockUntil?: Date;
+  role?: Role;
+  mutedUntil?: Date;
+  blockedUntil?: Date;
   kick?: boolean;
 }
 
 export interface UpdateChat {
   userId: number;
   chatId: number;
-  name?: string;
+  chatName?: string;
   password?: string;
   chatAvatar?: Express.Multer.File;
   participants?: updateChatParticipant[];

@@ -1,25 +1,19 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import {PrismaService} from '../prisma/prisma.service';
 import {CreateChatDto, SendMessageDto} from 'src/chat/dto';
 import {JoinChat, LeaveChat, UpdateChat} from 'src/chat/interface';
 import {Role} from '@prisma/client';
-import {
-  HttpCreateChat,
-  HttpGetAllChats,
-  HttpGetAllMessage,
-  HttpGetChatInfo,
-} from 'src/shared/HttpEndpoints/chat';
 import {WsChatJoin, WsChatLeave, WsChat_FromServer, WsNewMessage} from 'src/shared/WsEvents/chat';
 import {RoomNamePrefix} from 'src/webSocket/WsRoom/interface';
 import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
 import {WsException} from '@nestjs/websockets';
 import {HashManagerService} from 'src/hashManager/hashManager.service';
-import {ChatInfo} from 'src/shared/HttpEndpoints/interfaces';
+import {ChatInfo, ChatMessage, ChatOverview} from 'src/shared/HttpEndpoints/interfaces';
 import {ImageService} from 'src/image/image.service';
 import {filterDefinedProperties} from 'src/shared/sharedUtilities/utils.functions.';
 
@@ -35,43 +29,25 @@ export class ChatService {
 
   async getUserJoinedChatIds(userId: number): Promise<number[]> {
     const joinedChats = await this.prisma.chatParticipation.findMany({
-      where: {userId, hasLeaved: false},
+      where: {userId},
       select: {chatId: true},
     });
     return joinedChats.map(chat => chat.chatId);
   }
 
-  async createChat(userId: number, dto: CreateChatDto): Promise<HttpCreateChat.resTemplate> {
+  async createChat(userId: number, dto: CreateChatDto): Promise<void> {
     let chatAvatarUrl: string | undefined;
     const {chatAvatar, ...createChatData} = dto;
     if (chatAvatar)
       chatAvatarUrl = await this.image.uploadFile(chatAvatar.originalname, chatAvatar.buffer);
     if (createChatData.password)
       dto.password = await this.hashManager.hash(createChatData.password);
-    const chat = await this.prisma.chat.create({
+    await this.prisma.chat.create({
       data: {
         ...filterDefinedProperties({...createChatData, chatAvatarUrl}),
         participants: {create: {userId, role: 'ADMIN'}},
       },
-      select: {
-        chatId: true,
-        name: true,
-        chatAvatarUrl: true,
-        password: true,
-        participants: {
-          select: {
-            role: true,
-            userProfile: {select: {userId: true, nickname: true, avatarUrl: true}},
-            mutedUntil: true,
-            blockedUntil: true,
-            hasLeaved: true,
-          },
-        },
-      },
     });
-    const hasPassword = chat?.password ? true : false;
-    const {password, ...chatInfo} = chat;
-    return {...chatInfo, hasPassword};
   }
 
   async updateChat(dto: UpdateChat): Promise<void> {
@@ -79,14 +55,11 @@ export class ChatService {
     const {chatId, userId, participants, chatAvatar, ...chatInfo} = dto;
     const adminParticipation = await this.prisma.chatParticipation.findUnique({
       where: {chatId_userId: {chatId: dto.chatId, userId: dto.userId}},
-      select: {role: true, hasLeaved: true},
+      select: {role: true},
     });
-    if (!adminParticipation)
-      throw new UnauthorizedException('This user is not present in this chat');
-    if (adminParticipation.role === 'MEMBER')
-      throw new UnauthorizedException('This user has no right to update chat information');
-    if (adminParticipation.hasLeaved)
-      throw new UnauthorizedException('This user has leaved the chat');
+    if (!adminParticipation) throw new ForbiddenException('This user is not present in this chat');
+    if (adminParticipation.role !== 'ADMIN')
+      throw new ForbiddenException('This user has no right to update chat information');
     if (Object.keys(chatInfo).length) {
       if (chatInfo.password) chatInfo.password = await this.hashManager.hash(chatInfo.password);
       if (chatAvatar)
@@ -97,41 +70,8 @@ export class ChatService {
       });
     }
 
-    const now = Date.now();
-    if (!participants) return;
-    const participantData = participants.map(elem => {
-      if (!elem) return;
-      const {blockUntil, muteUntil, targetRole, kick} = elem;
-      if (blockUntil && blockUntil.getTime() < now)
-        throw new BadRequestException('Unable to block a user until a past date');
-      if (muteUntil && muteUntil.getTime() < now)
-        throw new BadRequestException('Unable to mute a user until a past date');
-      if (elem.userId === userId)
-        throw new UnauthorizedException("Unable to modify user's own participation settings");
-      const res = {userId: elem.userId} as {
-        userId: number;
-        blockedUntil?: Date;
-        mutedUntil?: Date;
-        role?: Role;
-        hasLeaved?: boolean;
-      };
-      if (blockUntil) {
-        res['blockedUntil'] = blockUntil;
-        res['hasLeaved'] = true;
-      }
-      if (muteUntil) res['mutedUntil'] = muteUntil;
-      if (targetRole) res['role'] = targetRole;
-      if (kick) res['hasLeaved'] = true;
-      return res;
-    });
-    for (const participant of participantData) {
-      if (!participant) continue;
-      await this.prisma.chatParticipation.update({
-        where: {chatId_userId: {chatId, userId: participant.userId}},
-        data: {...participant},
-      });
-      if (participant['hasLeaved'])
-        this.handleWsChatEvent(new WsChatLeave.Dto({chatId, userId: participant.userId}));
+    for (const participant of participants ?? []) {
+      this.updateChatParticipant(userId, chatId, participant);
     }
   }
 
@@ -139,127 +79,153 @@ export class ChatService {
     const {chatId, userId, password} = dto;
     const chat = await this.prisma.chat.findUnique({
       where: {chatId},
-      select: {password: true, chatId: true},
+      select: {password: true, chatId: true, chatName: true},
     });
     if (!chat) throw new NotFoundException(`no such chat`);
     if (!hasInvitation && !(await this.hashManager.verify(password, chat?.password)))
-      throw new UnauthorizedException(`invalid password`);
+      throw new ForbiddenException(`invalid password`);
 
-    const participation = await this.prisma.chatParticipation.findUnique({
-      where: {chatId_userId: {chatId, userId}},
-      select: {hasLeaved: true, blockedUntil: true},
+    const participation = await this.prisma.chatParticipation.count({
+      where: {chatId, userId},
     });
-    const blockedUntil = participation?.blockedUntil?.getTime();
-    if (blockedUntil && blockedUntil > Date.now())
-      throw new UnauthorizedException(`This user is still blocked until ${blockedUntil}`);
-    if (participation?.hasLeaved === false) throw new BadRequestException(`user already joined`);
-    if (participation?.hasLeaved) {
-      await this.prisma.chatParticipation.update({
-        where: {chatId_userId: {chatId, userId}},
-        data: {hasLeaved: false},
-      });
-    } else {
-      await this.prisma.chatParticipation.create({data: {chatId, userId}});
-    }
-    this.handleWsChatEvent(new WsChatJoin.Dto({chatId, userId}));
+    if (participation) throw new ForbiddenException(`already joined this chat`);
+    await this.prisma.chatParticipation.create({
+      data: {chatId, userId, role: 'MEMBER'},
+    });
+
+    const user = await this.prisma.profile.findUnique({
+      where: {userId},
+      select: {userId: true, nickname: true, avatarUrl: true},
+    });
+    if (!user) throw new NotFoundException(`no such user`);
+    this.handleWsChatEvent(
+      new WsChatJoin.Dto({
+        chat: {chatId, chatName: chat.chatName},
+        user,
+      }),
+    );
   }
 
-  async getAllMessagesFromChatId(
-    userId: number,
-    chatId: number,
-  ): Promise<HttpGetAllMessage.resTemplate> {
+  async getAllMessagesFromChatId(chatId: number): Promise<ChatMessage[]> {
     const messages = await this.prisma.message.findMany({
-      where: {chatParticipation: {chatId: chatId}},
-      select: {messageId: true, createdAt: true, messageContent: true, userId: true},
-      orderBy: {createdAt: 'asc'},
-    });
-
-    const participants = await this.prisma.chatParticipation.findMany({
-      where: {chatId: chatId},
-      select: {
-        userProfile: {select: {userId: true, nickname: true, avatarUrl: true}},
-        role: true,
-        mutedUntil: true,
-        blockedUntil: true,
-        hasLeaved: true,
-      },
-    });
-
-    for (const participation of participants) {
-      if (participation.userProfile.userId === userId && !participation?.hasLeaved)
-        return {messages, participants};
-    }
-
-    throw new UnauthorizedException('This user has no access to this chat');
-  }
-
-  async getChatInfo(chatId: number): Promise<HttpGetChatInfo.resTemplate> {
-    const chat = await this.prisma.chat.findUnique({
       where: {chatId},
       select: {
+        messageId: true,
+        createdAt: true,
+        messageContent: true,
+        userId: true,
+      },
+      orderBy: {createdAt: 'asc'},
+    });
+    const chatMessages: ChatMessage[] = [];
+    const users = await this.prisma.profile.findMany({
+      where: {userId: {in: messages.map(message => message.userId)}},
+      select: {userId: true, nickname: true, avatarUrl: true},
+    });
+    for (const message of messages) {
+      const user = users.find(user => user.userId === message.userId);
+      if (!user) continue;
+      const {userId, nickname, avatarUrl} = user;
+      const {messageId, createdAt, messageContent} = message;
+      chatMessages.push({
+        senderId: userId,
+        nickname,
+        avatarUrl,
+        messageId,
+        createdAt,
+        messageContent,
+      });
+    }
+    return chatMessages;
+  }
+
+  async getChatInfo(userId: number, chatId: number): Promise<ChatInfo> {
+    const chatOverview = await this.prisma.chat.findUnique({
+      where: {chatId},
+      select: {
+        chatId: true,
+        chatName: true,
+        chatAvatarUrl: true,
+        password: true,
         participants: {
+          where: {userId},
           select: {
-            userProfile: {select: {userId: true, nickname: true, avatarUrl: true}},
             role: true,
             mutedUntil: true,
             blockedUntil: true,
-            hasLeaved: true,
+            userId: true,
           },
         },
-        chatId: true,
-        name: true,
-        chatAvatarUrl: true,
-        password: true,
       },
     });
-    if (!chat) throw new NotFoundException(`no such chat`);
-    const hasPassword = chat?.password ? true : false;
-    const {password, ...chatInfo} = chat;
-    return {...chatInfo, hasPassword};
+
+    if (!chatOverview) throw new NotFoundException(`no such chat`);
+
+    const chatMessages = await this.getAllMessagesFromChatId(chatId);
+    const hasPassword = chatOverview?.password ? true : false;
+    const participation = chatOverview?.participants[0] || null;
+
+    const chatInfo: ChatInfo = {
+      chatOverview: {
+        chatId: chatOverview.chatId,
+        chatName: chatOverview.chatName,
+        chatAvatarUrl: chatOverview.chatAvatarUrl,
+        hasPassword,
+        participation,
+      },
+      chatMessages,
+    };
+    return chatInfo;
   }
 
-  async getAllChats(): Promise<HttpGetAllChats.resTemplate> {
+  async getOverviews(userId: number, chatId?: number): Promise<ChatOverview[]> {
     const chats = await this.prisma.chat.findMany({
       select: {
         participants: {
+          where: {userId, chatId: chatId},
           select: {
             userProfile: {select: {userId: true, nickname: true, avatarUrl: true}},
             role: true,
             mutedUntil: true,
             blockedUntil: true,
-            hasLeaved: true,
+            userId: true,
           },
         },
         chatId: true,
-        name: true,
+        chatName: true,
         chatAvatarUrl: true,
         password: true,
       },
     });
-    const chatList: ChatInfo[] = [];
+    const chatList: ChatOverview[] = [];
     for (const chat of chats) {
-      const hasPassword = chat?.password ? true : false;
-      const {password, ...chatInfo} = chat;
-      chatList.push({hasPassword, ...chatInfo});
+      const overview: ChatOverview = {
+        chatId: chat.chatId,
+        chatName: chat.chatName,
+        chatAvatarUrl: chat.chatAvatarUrl,
+        hasPassword: chat?.password ? true : false,
+        participation: chat.participants[0] || null,
+      };
+      chatList.push(overview);
     }
-    return {chats: chatList};
+    return chatList;
   }
 
   async sendMessage(userId: number, {chatId, messageContent}: SendMessageDto): Promise<void> {
     const participation = await this.prisma.chatParticipation.findUnique({
       where: {chatId_userId: {chatId, userId}},
       select: {
-        hasLeaved: true,
         chatId: true,
+        chat: {select: {chatName: true}},
         userId: true,
         blockedUntil: true,
         mutedUntil: true,
+        userProfile: {select: {nickname: true, avatarUrl: true}},
       },
     });
     if (!participation) throw new WsException('no such chat available for this user');
     const now = Date.now();
-    const {hasLeaved, blockedUntil, mutedUntil} = participation;
-    if (hasLeaved) throw new WsException('user has already leaved this chat');
+    const {blockedUntil, mutedUntil} = participation;
     if (blockedUntil && blockedUntil.getTime() > now) throw new WsException('user still blocked');
     if (mutedUntil && mutedUntil.getTime() > now) throw new WsException('user still mute');
     try {
@@ -267,9 +233,11 @@ export class ChatService {
         data: {userId, chatId, messageContent},
         select: {messageId: true},
       });
-      this.handleWsChatEvent(
-        new WsNewMessage.Dto({messageId, senderId: userId, chatId, messageContent}),
-      );
+      const {nickname, avatarUrl} = participation.userProfile;
+      const chat = {chatId, chatName: participation.chat.chatName};
+      const sender = {userId, nickname, avatarUrl};
+      const message = {messageId, messageContent};
+      this.handleWsChatEvent(new WsNewMessage.Dto({chat, sender, message}));
     } catch (err: any) {
       throw new WsException(err);
     }
@@ -277,43 +245,41 @@ export class ChatService {
 
   async leaveChat(dto: LeaveChat): Promise<void> {
     const {chatId, userId} = dto;
-    const participant = await this.prisma.chatParticipation.update({
+    const participant = await this.prisma.chatParticipation.delete({
       where: {chatId_userId: {chatId, userId}},
-      data: {hasLeaved: true},
+      select: {
+        userProfile: {select: {userId: true, nickname: true, avatarUrl: true}},
+        chat: {select: {chatName: true, chatId: true}},
+      },
     });
     if (!participant) throw new NotFoundException(`no such participant`);
-    this.handleWsChatEvent(new WsChatLeave.Dto({chatId, userId}));
+    this.handleWsChatEvent(
+      new WsChatLeave.Dto({
+        chat: participant.chat,
+        user: participant.userProfile,
+      }),
+    );
   }
 
-  async checkPermissionToUpdateChat(chatId: number, userId: number): Promise<void> | never {
-    const adminParticipation = await this.prisma.chatParticipation.findUnique({
-      where: {chatId_userId: {chatId, userId}},
-      select: {role: true, hasLeaved: true},
-    });
-    if (!adminParticipation)
-      throw new UnauthorizedException('This user is not present in this chat');
-    if (adminParticipation.role === 'MEMBER')
-      throw new UnauthorizedException('This user has no right to update chat information');
-    if (adminParticipation.hasLeaved)
-      throw new UnauthorizedException('This user has leaved the chat');
-  }
-
-  async updateChatInfo(
-    chatId: number,
-    chatInfo: {name?: string; password?: string; chatAvatarUrl?: string},
-  ): Promise<void> {
-    if (chatInfo.password) chatInfo.password = await this.hashManager.hash(chatInfo.password);
-    await this.prisma.chat.update({
-      where: {chatId},
-      data: {...chatInfo},
-    });
-  }
-
-  async updateChatParticipants(
+  async updateChatParticipant(
     userId: number,
     chatId: number,
-    data: {blockedUntil?: Date; hasLeaved?: boolean; mutedUntil?: Date; role?: Role},
+    data: {blockedUntil?: Date; mutedUntil?: Date; role?: Role} | {kick: boolean},
   ) {
+    if (data instanceof Object && 'kick' in data) {
+      if (!data.kick) throw new BadRequestException('kick must be true');
+      return await this.leaveChat({chatId, userId});
+    }
+
+    const {blockedUntil, mutedUntil} = data;
+    const now = Date.now();
+
+    if (blockedUntil && blockedUntil.getTime() < now)
+      throw new BadRequestException('Unable to block a user until a past date');
+
+    if (mutedUntil && mutedUntil.getTime() < now)
+      throw new BadRequestException('Unable to mute a user until a past date');
+
     await this.prisma.chatParticipation.update({
       where: {chatId_userId: {chatId, userId: userId}},
       data: {...data},
@@ -322,13 +288,19 @@ export class ChatService {
 
   handleWsChatEvent(eventDto: WsChat_FromServer.template): void {
     const prefix = this.prefix;
-    const roomId = eventDto.message.chatId;
+    let userId: number;
+    if (eventDto instanceof WsNewMessage.Dto) userId = eventDto.message.sender.userId;
+    else
+      userId = (
+        eventDto.message as WsChatJoin.eventMessageTemplate | WsChatLeave.eventMessageTemplate
+      ).user.userId;
+    const roomId = eventDto.message.chat.chatId;
     this.room.broadcastMessageInRoom({prefix, roomId, ...eventDto});
 
     if (eventDto instanceof WsChat_FromServer.chatJoin.Dto)
-      this.room.addUserToRoom({prefix, roomId, userId: eventDto.message.userId});
+      this.room.addUserToRoom({prefix, roomId, userId});
     else if (eventDto instanceof WsChat_FromServer.chatLeave.Dto)
-      this.room.removeUserFromRoom({prefix, roomId, userId: eventDto.message.userId});
+      this.room.removeUserFromRoom({prefix, roomId, userId});
   }
 
   async handleUserConnection(userId: number): Promise<void> {
