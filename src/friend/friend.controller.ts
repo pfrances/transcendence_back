@@ -11,17 +11,19 @@ export class FriendController {
   constructor(private readonly friend: FriendService) {}
 
   @Get(HttpGetFriendsList.endPoint)
-  getUserFriendProfiles(
+  async getUserFriendProfiles(
     @GetInfoFromJwt('userId') userId: number,
   ): Promise<HttpGetFriendsList.resTemplate> {
-    return this.friend.getUserFriendProfilesList(userId);
+    const friendsProfiles = await this.friend.getUserFriendProfilesList(userId);
+    return {friendsProfiles};
   }
 
   @Delete(HttpRemoveFriend.endPoint)
-  deleteFriend(
+  async deleteFriend(
     @GetInfoFromJwt('userId') userId: number,
     @Body() dto: RemoveFriendDto,
   ): Promise<HttpRemoveFriend.resTemplate> {
-    return this.friend.unsetRelationship({userId, targetUserId: dto.friendId});
+    await this.friend.unsetRelationship({userId, targetUserId: dto.friendId});
+    return {};
   }
 }

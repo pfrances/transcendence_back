@@ -13,6 +13,7 @@ import {PrismaClientKnownRequestError} from '@prisma/client/runtime/library';
 import {HashManagerService} from 'src/hashManager/hashManager.service';
 import {ImageService} from 'src/image/image.service';
 import {filterDefinedProperties} from 'src/shared/sharedUtilities/utils.functions.';
+import {WsSocketService} from 'src/webSocket/WsSocket/WsSocket.service';
 
 @Injectable()
 export class UserService {
@@ -32,7 +33,7 @@ export class UserService {
     const users = await this.prisma.profile.findMany({
       select: {userId: true, nickname: true, avatarUrl: true},
     });
-    return users;
+    return users.map(user => ({...user, isOnline: WsSocketService.isOnline(user.userId)}));
   }
 
   async editUserInfo(
@@ -76,14 +77,14 @@ export class UserService {
         select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}},
       });
       if (!user?.profile) throw new Error('user profile not found');
-      return user.profile;
+      return {...user.profile, isOnline: WsSocketService.isOnline(user.profile.userId)};
     }
     const user = await this.prisma.profile.findUnique({
       where: {...userInfo},
       select: {userId: true, nickname: true, avatarUrl: true},
     });
     if (!user) throw new Error('user profile not found');
-    return user;
+    return {...user, isOnline: WsSocketService.isOnline(user.userId)};
   }
 
   async getUserPrivateInfo(userInfo: GetUserTemplate): Promise<UserPrivateProfile> {

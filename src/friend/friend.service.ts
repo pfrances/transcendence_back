@@ -1,7 +1,6 @@
 import {ConflictException, Injectable, NotFoundException} from '@nestjs/common';
 import {PrismaService} from 'src/prisma/prisma.service';
 import {SetRelationship} from './interface';
-import {FriendPublicProfilesList} from 'src/shared/HttpEndpoints/interfaces';
 import {WsLeftFriend, WsNewFriend} from 'src/shared/WsEvents/friend';
 import {RoomNamePrefix} from 'src/webSocket/WsRoom/interface';
 import {
@@ -10,6 +9,8 @@ import {
   WsFriend_FromServer,
 } from 'src/shared/WsEvents/friend';
 import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
+import {WsSocketService} from 'src/webSocket/WsSocket/WsSocket.service';
+import {UserPublicProfile} from 'src/shared/HttpEndpoints/interfaces';
 
 @Injectable()
 export class FriendService {
@@ -28,18 +29,15 @@ export class FriendService {
     return profile.map(p => p.friendId);
   }
 
-  async getUserFriendProfilesList(userId: number): Promise<FriendPublicProfilesList> {
+  async getUserFriendProfilesList(userId: number): Promise<UserPublicProfile[]> {
     const friends = await this.prisma.friend.findMany({
       where: {userId},
       select: {friend: {select: {userId: true, nickname: true, avatarUrl: true}}},
     });
-    return {friendsProfiles: friends.map(f => f.friend)};
+    return friends.map(f => ({...f.friend, isOnline: WsSocketService.isOnline(f.friend.userId)}));
   }
 
-  async setRelationship({
-    userId,
-    targetUserId,
-  }: SetRelationship): Promise<FriendPublicProfilesList> {
+  async setRelationship({userId, targetUserId}: SetRelationship): Promise<void> {
     try {
       await this.prisma.friend.createMany({
         data: [
@@ -49,32 +47,28 @@ export class FriendService {
       });
       this.handleWsFriendEvent(new WsNewFriend.Dto({friendId: targetUserId}));
       this.handleWsFriendEvent(new WsNewFriend.Dto({friendId: userId}));
-      return this.getUserFriendProfilesList(userId);
     } catch (e) {
       throw new ConflictException('friend relationship already exist');
     }
   }
-  async unsetRelationship({
-    userId,
-    targetUserId,
-  }: SetRelationship): Promise<FriendPublicProfilesList> {
+
+  async unsetRelationship({userId, targetUserId}: SetRelationship): Promise<void> {
     if (userId === targetUserId)
       throw new ConflictException('userId and targetUserId are the same');
-      try {
-        await this.prisma.friend.deleteMany({
-          where: {
-            OR: [
-              {userId, friendId: targetUserId},
-              {userId: targetUserId, friendId: userId},
-            ],
-          },
-        });
-        this.handleWsFriendEvent(new WsLeftFriend.Dto({friendId: targetUserId}));
-        this.handleWsFriendEvent(new WsLeftFriend.Dto({friendId: userId}));
-        return this.getUserFriendProfilesList(userId);
-      } catch (e) {
-        throw new NotFoundException('friend relationship not found');
-      }
+    try {
+      await this.prisma.friend.deleteMany({
+        where: {
+          OR: [
+            {userId, friendId: targetUserId},
+            {userId: targetUserId, friendId: userId},
+          ],
+        },
+      });
+      this.handleWsFriendEvent(new WsLeftFriend.Dto({friendId: targetUserId}));
+      this.handleWsFriendEvent(new WsLeftFriend.Dto({friendId: userId}));
+    } catch (e) {
+      throw new NotFoundException('friend relationship not found');
+    }
   }
 
   handleWsFriendEvent(eventDto: WsFriend_FromServer.template): void {

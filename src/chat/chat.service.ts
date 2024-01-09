@@ -2,12 +2,12 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import {PrismaService} from '../prisma/prisma.service';
 import {CreateChatDto, SendMessageDto} from 'src/chat/dto';
-import {JoinChat, LeaveChat, UpdateChat} from 'src/chat/interface';
-import {Role} from '@prisma/client';
+import {JoinChat, LeaveChat, UpdateChat, updateChatParticipant} from 'src/chat/interface';
 import {WsChatJoin, WsChatLeave, WsChat_FromServer, WsNewMessage} from 'src/shared/WsEvents/chat';
 import {RoomNamePrefix} from 'src/webSocket/WsRoom/interface';
 import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
@@ -35,24 +35,58 @@ export class ChatService {
     return joinedChats.map(chat => chat.chatId);
   }
 
-  async createChat(userId: number, dto: CreateChatDto): Promise<void> {
+  async createChat(userId: number, dto: CreateChatDto): Promise<ChatOverview> {
     let chatAvatarUrl: string | undefined;
     const {chatAvatar, ...createChatData} = dto;
     if (chatAvatar)
       chatAvatarUrl = await this.image.uploadFile(chatAvatar.originalname, chatAvatar.buffer);
     if (createChatData.password)
       dto.password = await this.hashManager.hash(createChatData.password);
-    await this.prisma.chat.create({
+    const chat = await this.prisma.chat.create({
       data: {
         ...filterDefinedProperties({...createChatData, chatAvatarUrl}),
         participants: {create: {userId, role: 'ADMIN'}},
       },
+      select: {
+        chatId: true,
+        chatName: true,
+        chatAvatarUrl: true,
+        password: true,
+        participants: {
+          where: {userId},
+          select: {
+            role: true,
+            mutedUntil: true,
+            blockedUntil: true,
+            userId: true,
+          },
+        },
+      },
     });
+    if (!chat) throw new InternalServerErrorException('unable to create chat');
+    const chatOverview: ChatOverview = {
+      chatId: chat.chatId,
+      chatName: chat.chatName,
+      chatAvatarUrl: chat.chatAvatarUrl,
+      hasPassword: chat.password ? true : false,
+      participation: chat.participants[0] || null,
+    };
+    const user = await this.prisma.profile.findUniqueOrThrow({
+      where: {userId},
+      select: {userId: true, nickname: true, avatarUrl: true},
+    });
+    this.handleWsChatEvent(
+      new WsChatJoin.Dto({
+        chat: {chatId: chat.chatId, chatName: chat.chatName},
+        user,
+      }),
+    );
+    return chatOverview;
   }
 
   async updateChat(dto: UpdateChat): Promise<void> {
     let chatAvatarUrl: string | undefined;
-    const {chatId, userId, participants, chatAvatar, ...chatInfo} = dto;
+    const {chatId, userId, chatAvatar, ...chatInfo} = dto;
     const adminParticipation = await this.prisma.chatParticipation.findUnique({
       where: {chatId_userId: {chatId: dto.chatId, userId: dto.userId}},
       select: {role: true},
@@ -69,10 +103,6 @@ export class ChatService {
         data: {...filterDefinedProperties({...chatInfo, chatAvatarUrl})},
       });
     }
-
-    for (const participant of participants ?? []) {
-      this.updateChatParticipant(userId, chatId, participant);
-    }
   }
 
   async joinChat(dto: JoinChat, hasInvitation: boolean = false): Promise<void> {
@@ -85,13 +115,11 @@ export class ChatService {
     if (!hasInvitation && !(await this.hashManager.verify(password, chat?.password)))
       throw new ForbiddenException(`invalid password`);
 
-    const participation = await this.prisma.chatParticipation.count({
-      where: {chatId, userId},
-    });
-    if (participation) throw new ForbiddenException(`already joined this chat`);
-    await this.prisma.chatParticipation.create({
-      data: {chatId, userId, role: 'MEMBER'},
-    });
+    try {
+      await this.prisma.chatParticipation.create({data: {chatId, userId, role: 'MEMBER'}});
+    } catch (err: any) {
+      throw new ForbiddenException(`already joined this chat`);
+    }
 
     const user = await this.prisma.profile.findUnique({
       where: {userId},
@@ -261,14 +289,24 @@ export class ChatService {
     );
   }
 
-  async updateChatParticipant(
-    userId: number,
-    chatId: number,
-    data: {blockedUntil?: Date; mutedUntil?: Date; role?: Role} | {kick: boolean},
-  ) {
-    if (data instanceof Object && 'kick' in data) {
-      if (!data.kick) throw new BadRequestException('kick must be true');
-      return await this.leaveChat({chatId, userId});
+  async updateChatParticipant(userId: number, data: updateChatParticipant) {
+    const {chatId} = data;
+
+    const partipationOfUser = await this.prisma.chatParticipation.findUnique({
+      where: {chatId_userId: {chatId, userId}},
+      select: {role: true},
+    });
+    if (!partipationOfUser) throw new NotFoundException('no such participation');
+    if (partipationOfUser.role !== 'ADMIN') throw new ForbiddenException('no right to update');
+
+    const participationToUpdate = await this.prisma.chatParticipation.findUnique({
+      where: {chatId_userId: {chatId, userId: data.userId}},
+    });
+    if (!participationToUpdate) throw new NotFoundException('no such participation');
+
+    if ('kick' in data) {
+      if (data.kick == false) throw new BadRequestException('kick must be true or undefined');
+      return await this.leaveChat({chatId, userId: participationToUpdate.userId});
     }
 
     const {blockedUntil, mutedUntil} = data;
@@ -295,11 +333,10 @@ export class ChatService {
         eventDto.message as WsChatJoin.eventMessageTemplate | WsChatLeave.eventMessageTemplate
       ).user.userId;
     const roomId = eventDto.message.chat.chatId;
-    this.room.broadcastMessageInRoom({prefix, roomId, ...eventDto});
-
     if (eventDto instanceof WsChat_FromServer.chatJoin.Dto)
       this.room.addUserToRoom({prefix, roomId, userId});
-    else if (eventDto instanceof WsChat_FromServer.chatLeave.Dto)
+    this.room.broadcastMessageInRoom({prefix, roomId, ...eventDto});
+    if (eventDto instanceof WsChat_FromServer.chatLeave.Dto)
       this.room.removeUserFromRoom({prefix, roomId, userId});
   }
 

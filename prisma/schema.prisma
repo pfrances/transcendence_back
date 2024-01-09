@@ -23,7 +23,7 @@ model User {
 }
 
 model Profile {
-  userId             Int             @id
+  userId             Int                 @id
   user               User                @relation("profile", fields: [userId], references: [userId], onDelete: Cascade)
   nickname           String              @unique
   avatarUrl          String?
@@ -36,7 +36,7 @@ model Friend {
   userId   Int
   friendId Int
 
-  user   User @relation("friend", fields: [userId], references: [userId], onDelete: Cascade)
+  user   User    @relation("friend", fields: [userId], references: [userId], onDelete: Cascade)
   friend Profile @relation("friendOf", fields: [friendId], references: [userId], onDelete: Cascade)
 
   @@id([userId, friendId])
@@ -94,10 +94,10 @@ model Message {
   messageId Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
 
-  chatId            Int
-  chat              Chat @relation(fields: [chatId], references: [chatId], onDelete: Cascade)
-  userId            Int
-  messageContent    String
+  chatId         Int
+  chat           Chat   @relation(fields: [chatId], references: [chatId], onDelete: Cascade)
+  userId         Int
+  messageContent String
 
   @@map("Messages")
 }

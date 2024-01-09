@@ -26,8 +26,11 @@ import {
   HttpJoinChat,
   HttpLeaveChat,
   HttpUpdateChat,
+  HttpUpdateChatParticipation,
 } from 'src/shared/HttpEndpoints/chat';
 import {FileInterceptor} from '@nestjs/platform-express';
+import {filterDefinedProperties} from 'src/shared/sharedUtilities/utils.functions.';
+import {UpdateChatParticipationDto} from './dto/UpdateChatParticipation';
 
 @Controller(HttpChat.endPointBase)
 @UseGuards(JwtAuthGuard)
@@ -59,8 +62,7 @@ export class ChatController {
     chatAvatar: Express.Multer.File,
   ): Promise<HttpCreateChat.resTemplate> {
     if (chatAvatar) dto.chatAvatar = chatAvatar;
-    this.chat.createChat(userId, dto);
-    return {};
+    return await this.chat.createChat(userId, dto);
   }
 
   @Get(HttpGetChatInfo.endPoint)
@@ -107,11 +109,22 @@ export class ChatController {
     )
     chatAvatar: Express.Multer.File,
   ): Promise<HttpUpdateChat.resTemplate> {
-    if (!Object.keys(dto).length) throw new UnprocessableEntityException('no data to update');
-
+    if (Object.keys(filterDefinedProperties(dto)).length === 0 && !chatAvatar)
+      throw new UnprocessableEntityException('no data to update');
     if (chatAvatar) dto.chatAvatar = chatAvatar;
     await this.chat.updateChat({...dto, userId, chatId});
-    const chats = await this.chat.getOverviews(userId);
-    return chats[0];
+    return {};
+  }
+
+  @Post(HttpUpdateChatParticipation.endPoint)
+  async updateChatParticipatoon(
+    @GetInfoFromJwt('userId') userId: number,
+    @Param('chatId', ParseIntPipe) chatId: number,
+    @Body() dto: UpdateChatParticipationDto,
+  ): Promise<HttpUpdateChatParticipation.resTemplate> {
+    if (Object.keys(filterDefinedProperties(dto)).length === 0)
+      throw new UnprocessableEntityException('no data to update');
+    await this.chat.updateChatParticipant(userId, {chatId, ...dto});
+    return {};
   }
 }

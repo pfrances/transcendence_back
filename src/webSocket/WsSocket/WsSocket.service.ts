@@ -8,6 +8,10 @@ export class WsSocketService {
   private static ClientSocketMap = new Map<number, Socket[]>();
   private static ClientJwtMap = new Map<string, JwtTokenPayload>();
 
+  static isOnline(userId: number): boolean {
+    return WsSocketService.ClientSocketMap.has(userId);
+  }
+
   static getClientSocketsByUserId(userId: number): Socket[] {
     const clientSocket = WsSocketService.ClientSocketMap.get(userId);
     return clientSocket ?? [];
@@ -15,13 +19,13 @@ export class WsSocketService {
 
   static getUserIdByClientSocketId(socketId: string): number {
     const userId = WsSocketService.ClientJwtMap.get(socketId)?.userId;
-    if (!userId) throw new Error('user id not found');
+    if (!userId) throw new WsException('user id not found');
     return userId;
   }
 
   static getJwtInfoByClientSocketId(socketId: string): JwtTokenPayload {
     const jwt = WsSocketService.ClientJwtMap.get(socketId);
-    if (!jwt) throw new Error('jwt not found');
+    if (!jwt) throw new WsException('jwt not found');
     return jwt;
   }
 
