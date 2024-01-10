@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -42,46 +43,50 @@ export class ChatService {
       chatAvatarUrl = await this.image.uploadFile(chatAvatar.originalname, chatAvatar.buffer);
     if (createChatData.password)
       dto.password = await this.hashManager.hash(createChatData.password);
-    const chat = await this.prisma.chat.create({
-      data: {
-        ...filterDefinedProperties({...createChatData, chatAvatarUrl}),
-        participants: {create: {userId, role: 'ADMIN'}},
-      },
-      select: {
-        chatId: true,
-        chatName: true,
-        chatAvatarUrl: true,
-        password: true,
-        participants: {
-          where: {userId},
-          select: {
-            role: true,
-            mutedUntil: true,
-            blockedUntil: true,
-            userId: true,
+    try {
+      const chat = await this.prisma.chat.create({
+        data: {
+          ...filterDefinedProperties({...createChatData, chatAvatarUrl}),
+          participants: {create: {userId, role: 'ADMIN'}},
+        },
+        select: {
+          chatId: true,
+          chatName: true,
+          chatAvatarUrl: true,
+          password: true,
+          participants: {
+            where: {userId},
+            select: {
+              role: true,
+              mutedUntil: true,
+              blockedUntil: true,
+              userId: true,
+            },
           },
         },
-      },
-    });
-    if (!chat) throw new InternalServerErrorException('unable to create chat');
-    const chatOverview: ChatOverview = {
-      chatId: chat.chatId,
-      chatName: chat.chatName,
-      chatAvatarUrl: chat.chatAvatarUrl,
-      hasPassword: chat.password ? true : false,
-      participation: chat.participants[0] || null,
-    };
-    const user = await this.prisma.profile.findUniqueOrThrow({
-      where: {userId},
-      select: {userId: true, nickname: true, avatarUrl: true},
-    });
-    this.handleWsChatEvent(
-      new WsChatJoin.Dto({
-        chat: {chatId: chat.chatId, chatName: chat.chatName},
-        user,
-      }),
-    );
-    return chatOverview;
+      });
+      if (!chat) throw new InternalServerErrorException('unable to create chat');
+      const chatOverview: ChatOverview = {
+        chatId: chat.chatId,
+        chatName: chat.chatName,
+        chatAvatarUrl: chat.chatAvatarUrl,
+        hasPassword: chat.password ? true : false,
+        participation: chat.participants[0] || null,
+      };
+      const user = await this.prisma.profile.findUniqueOrThrow({
+        where: {userId},
+        select: {userId: true, nickname: true, avatarUrl: true},
+      });
+      this.handleWsChatEvent(
+        new WsChatJoin.Dto({
+          chat: {chatId: chat.chatId, chatName: chat.chatName},
+          user,
+        }),
+      );
+      return chatOverview;
+    } catch (err: any) {
+      throw new ConflictException('chat name already taken');
+    }
   }
 
   async updateChat(dto: UpdateChat): Promise<void> {
@@ -98,10 +103,14 @@ export class ChatService {
       if (chatInfo.password) chatInfo.password = await this.hashManager.hash(chatInfo.password);
       if (chatAvatar)
         chatAvatarUrl = await this.image.uploadFile(chatAvatar.originalname, chatAvatar.buffer);
-      await this.prisma.chat.update({
-        where: {chatId},
-        data: {...filterDefinedProperties({...chatInfo, chatAvatarUrl})},
-      });
+      try {
+        await this.prisma.chat.update({
+          where: {chatId},
+          data: {...filterDefinedProperties({...chatInfo, chatAvatarUrl})},
+        });
+      } catch (err: any) {
+        throw new ConflictException('chat name already taken');
+      }
     }
   }
 
@@ -112,7 +121,7 @@ export class ChatService {
       select: {password: true, chatId: true, chatName: true},
     });
     if (!chat) throw new NotFoundException(`no such chat`);
-    if (!hasInvitation && !(await this.hashManager.verify(password, chat?.password)))
+    if (!hasInvitation && !(await this.hashManager.verify(chat?.password, password)))
       throw new ForbiddenException(`invalid password`);
 
     try {
@@ -176,7 +185,6 @@ export class ChatService {
         chatAvatarUrl: true,
         password: true,
         participants: {
-          where: {userId},
           select: {
             role: true,
             mutedUntil: true,
@@ -190,8 +198,12 @@ export class ChatService {
     if (!chatOverview) throw new NotFoundException(`no such chat`);
 
     const chatMessages = await this.getAllMessagesFromChatId(chatId);
-    const hasPassword = chatOverview?.password ? true : false;
-    const participation = chatOverview?.participants[0] || null;
+    const hasPassword = chatOverview.password ? true : false;
+    const participation =
+      chatOverview.participants.find(participation => participation.userId === userId) || null;
+    const otherParticipations = chatOverview.participants.filter(
+      participation => participation.userId !== userId,
+    );
 
     const chatInfo: ChatInfo = {
       chatOverview: {
@@ -202,6 +214,7 @@ export class ChatService {
         participation,
       },
       chatMessages,
+      otherParticipations,
     };
     return chatInfo;
   }
@@ -289,11 +302,11 @@ export class ChatService {
     );
   }
 
-  async updateChatParticipant(userId: number, data: updateChatParticipant) {
-    const {chatId} = data;
+  async updateChatParticipant(updaterUserId: number, data: updateChatParticipant) {
+    const {chatId, userId, ...updateData} = data;
 
     const partipationOfUser = await this.prisma.chatParticipation.findUnique({
-      where: {chatId_userId: {chatId, userId}},
+      where: {chatId_userId: {chatId, userId: updaterUserId}},
       select: {role: true},
     });
     if (!partipationOfUser) throw new NotFoundException('no such participation');
@@ -304,12 +317,12 @@ export class ChatService {
     });
     if (!participationToUpdate) throw new NotFoundException('no such participation');
 
-    if ('kick' in data) {
-      if (data.kick == false) throw new BadRequestException('kick must be true or undefined');
+    if ('kick' in updateData) {
+      if (updateData.kick == false) throw new BadRequestException('kick must be true or undefined');
       return await this.leaveChat({chatId, userId: participationToUpdate.userId});
     }
 
-    const {blockedUntil, mutedUntil} = data;
+    const {blockedUntil, mutedUntil} = updateData;
     const now = Date.now();
 
     if (blockedUntil && blockedUntil.getTime() < now)
@@ -317,10 +330,9 @@ export class ChatService {
 
     if (mutedUntil && mutedUntil.getTime() < now)
       throw new BadRequestException('Unable to mute a user until a past date');
-
     await this.prisma.chatParticipation.update({
-      where: {chatId_userId: {chatId, userId: userId}},
-      data: {...data},
+      where: {chatId_userId: {chatId, userId}},
+      data: {...updateData},
     });
   }
 

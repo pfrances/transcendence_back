@@ -14,7 +14,8 @@ export class HashManagerService {
     if (!hash) return plainText ? false : true;
     if (!plainText) return false;
     try {
-      return await argon2.verify(hash, plainText);
+      const isValid = await argon2.verify(hash, plainText);
+      return isValid;
     } catch (err) {
       return false;
     }

@@ -79,7 +79,7 @@ enum InvitationKind {
 model Chat {
   chatId Int @id @default(autoincrement())
 
-  chatName      String
+  chatName      String  @unique
   chatAvatarUrl String?
   password      String?
 

@@ -101,7 +101,7 @@ export class ChatController {
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new MaxFileSizeValidator({maxSize: 1024 * 1024}),
+          new MaxFileSizeValidator({maxSize: 256 * 1024}),
           new FileTypeValidator({fileType: 'image/*'}),
         ],
         fileIsRequired: false,
@@ -116,14 +116,14 @@ export class ChatController {
     return {};
   }
 
-  @Post(HttpUpdateChatParticipation.endPoint)
+  @Patch(HttpUpdateChatParticipation.endPoint)
   async updateChatParticipatoon(
     @GetInfoFromJwt('userId') userId: number,
     @Param('chatId', ParseIntPipe) chatId: number,
     @Body() dto: UpdateChatParticipationDto,
   ): Promise<HttpUpdateChatParticipation.resTemplate> {
-    if (Object.keys(filterDefinedProperties(dto)).length === 0)
-      throw new UnprocessableEntityException('no data to update');
+    dto = filterDefinedProperties(dto);
+    if (Object.keys(dto).length === 0) throw new UnprocessableEntityException('no data to update');
     await this.chat.updateChatParticipant(userId, {chatId, ...dto});
     return {};
   }

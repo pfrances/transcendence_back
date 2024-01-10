@@ -59,7 +59,7 @@ export class UserService {
           profile: {update: {...profileModelInfo}},
         },
       });
-      if (!user?.profile) throw new Error('unable to update the user');
+      if (!user?.profile) throw new InternalServerErrorException('unable to update the user');
       return {...user.profile, email: user.email};
     } catch (err: PrismaClientKnownRequestError | any) {
       if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002')
@@ -76,14 +76,14 @@ export class UserService {
         where: {...userInfo},
         select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}},
       });
-      if (!user?.profile) throw new Error('user profile not found');
+      if (!user?.profile) throw new InternalServerErrorException('user profile not found');
       return {...user.profile, isOnline: WsSocketService.isOnline(user.profile.userId)};
     }
     const user = await this.prisma.profile.findUnique({
       where: {...userInfo},
       select: {userId: true, nickname: true, avatarUrl: true},
     });
-    if (!user) throw new Error('user profile not found');
+    if (!user) throw new InternalServerErrorException('user profile not found');
     return {...user, isOnline: WsSocketService.isOnline(user.userId)};
   }
 
@@ -93,14 +93,14 @@ export class UserService {
         where: {...userInfo},
         select: {email: true, profile: {select: {userId: true, nickname: true, avatarUrl: true}}},
       });
-      if (!user?.profile) throw new Error('user profile not found');
+      if (!user?.profile) throw new InternalServerErrorException('user profile not found');
       return {...user.profile, email: user.email};
     }
     const user = await this.prisma.profile.findUnique({
       where: {...userInfo},
       select: {userId: true, nickname: true, avatarUrl: true, user: {select: {email: true}}},
     });
-    if (!user) throw new Error('user profile not found');
+    if (!user) throw new InternalServerErrorException('user profile not found');
     return {...user, email: user.user.email};
   }
 
@@ -134,7 +134,7 @@ export class UserService {
         data: {user: {create: {...userInfo}}, nickname, avatarUrl},
         select: {userId: true, nickname: true, avatarUrl: true, user: {select: {email: true}}},
       });
-      if (!profile) throw new Error('unable to create the user');
+      if (!profile) throw new InternalServerErrorException('unable to create the user');
 
       return {...profile, email: profile.user.email};
     } catch (err: PrismaClientKnownRequestError | any) {

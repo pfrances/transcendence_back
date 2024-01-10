@@ -8,7 +8,7 @@ export class UpdateChatDto {
 
   @IsOptional()
   @IsString()
-  password?: string;
+  password?: string | null;
 
   @IsOptional()
   chatAvatar?: Express.Multer.File;

@@ -16,6 +16,6 @@ export interface UpdateChat {
   userId: number;
   chatId: number;
   chatName?: string;
-  password?: string;
+  password?: string | null;
   chatAvatar?: Express.Multer.File;
 }
