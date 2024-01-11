@@ -101,7 +101,7 @@ export class ChatController {
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new MaxFileSizeValidator({maxSize: 256 * 1024}),
+          new MaxFileSizeValidator({maxSize: 1024 * 1024}),
           new FileTypeValidator({fileType: 'image/*'}),
         ],
         fileIsRequired: false,

@@ -6,8 +6,8 @@ export type updateChatParticipant = {
 } & (
   | {
       role?: Role;
-      mutedUntil?: Date;
-      blockedUntil?: Date;
+      mutedUntil?: Date | null;
+      blockedUntil?: Date | null;
     }
   | {kick: boolean}
 );

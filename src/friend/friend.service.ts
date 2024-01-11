@@ -38,6 +38,21 @@ export class FriendService {
   }
 
   async setRelationship({userId, targetUserId}: SetRelationship): Promise<void> {
+    const prefix = this.prefix;
+    if (userId === targetUserId)
+      throw new ConflictException('userId and targetUserId are the same');
+
+    const ourProfile = await this.prisma.profile.findUnique({
+      where: {userId},
+      select: {userId: true, nickname: true, avatarUrl: true},
+    });
+    if (!ourProfile) throw new Error(`user with id '${userId}' not found`);
+    const friendProfile = await this.prisma.profile.findUnique({
+      where: {userId: targetUserId},
+      select: {userId: true, nickname: true, avatarUrl: true},
+    });
+    if (!friendProfile) throw new Error(`user with id '${targetUserId}' not found`);
+
     try {
       await this.prisma.friend.createMany({
         data: [
@@ -45,16 +60,30 @@ export class FriendService {
           {userId: targetUserId, friendId: userId},
         ],
       });
-      this.handleWsFriendEvent(new WsNewFriend.Dto({friendId: targetUserId}));
-      this.handleWsFriendEvent(new WsNewFriend.Dto({friendId: userId}));
+      this.wsRoom.addUserToRoom({userId, prefix, roomId: targetUserId});
+      this.wsRoom.addUserToRoom({userId: targetUserId, prefix, roomId: userId});
+      this.handleWsFriendEvent(new WsNewFriend.Dto({friend: friendProfile}));
+      this.handleWsFriendEvent(new WsNewFriend.Dto({friend: ourProfile}));
     } catch (e) {
       throw new ConflictException('friend relationship already exist');
     }
   }
 
   async unsetRelationship({userId, targetUserId}: SetRelationship): Promise<void> {
+    const prefix = this.prefix;
     if (userId === targetUserId)
       throw new ConflictException('userId and targetUserId are the same');
+
+    const ourProfile = await this.prisma.profile.findUnique({
+      where: {userId},
+      select: {userId: true, nickname: true, avatarUrl: true},
+    });
+    if (!ourProfile) throw new Error(`user with id '${userId}' not found`);
+    const friendProfile = await this.prisma.profile.findUnique({
+      where: {userId: targetUserId},
+      select: {userId: true, nickname: true, avatarUrl: true},
+    });
+    if (!friendProfile) throw new Error(`user with id '${targetUserId}' not found`);
     try {
       await this.prisma.friend.deleteMany({
         where: {
@@ -64,8 +93,10 @@ export class FriendService {
           ],
         },
       });
-      this.handleWsFriendEvent(new WsLeftFriend.Dto({friendId: targetUserId}));
-      this.handleWsFriendEvent(new WsLeftFriend.Dto({friendId: userId}));
+      this.handleWsFriendEvent(new WsLeftFriend.Dto({friend: friendProfile}));
+      this.handleWsFriendEvent(new WsLeftFriend.Dto({friend: ourProfile}));
+      this.wsRoom.removeUserFromRoom({userId, prefix, roomId: targetUserId});
+      this.wsRoom.removeUserFromRoom({userId: targetUserId, prefix, roomId: userId});
     } catch (e) {
       throw new NotFoundException('friend relationship not found');
     }
@@ -73,14 +104,19 @@ export class FriendService {
 
   handleWsFriendEvent(eventDto: WsFriend_FromServer.template): void {
     const prefix = this.prefix;
-    const roomId = eventDto.message.friendId;
+    const roomId = eventDto.message.friend.userId;
     this.wsRoom.broadcastMessageInRoom({prefix, roomId, ...eventDto});
   }
 
   async handleUserConnection(userId: number): Promise<void> {
     const prefix = this.prefix;
     const friendIds = await this.getUserFriendUserIds(userId);
-    this.handleWsFriendEvent(new WsFriendConnection.Dto({friendId: userId}));
+    const profile = await this.prisma.profile.findUnique({
+      where: {userId},
+      select: {userId: true, nickname: true, avatarUrl: true},
+    });
+    if (!profile) throw new Error(`user with id '${userId}' not found`);
+    this.handleWsFriendEvent(new WsFriendConnection.Dto({friend: profile}));
     friendIds.forEach(roomId => {
       this.wsRoom.addUserToRoom({userId, prefix, roomId});
     });
@@ -89,7 +125,12 @@ export class FriendService {
   async handleUserDisconnection(userId: number): Promise<void> {
     const prefix = this.prefix;
     const friendIds = await this.getUserFriendUserIds(userId);
-    this.handleWsFriendEvent(new WsFriendDisconnection.Dto({friendId: userId}));
+    const profile = await this.prisma.profile.findUnique({
+      where: {userId},
+      select: {userId: true, nickname: true, avatarUrl: true},
+    });
+    if (!profile) throw new Error(`user with id '${userId}' not found`);
+    this.handleWsFriendEvent(new WsFriendDisconnection.Dto({friend: profile}));
     friendIds.forEach(roomId => {
       this.wsRoom.removeUserFromRoom({userId, prefix, roomId});
     });

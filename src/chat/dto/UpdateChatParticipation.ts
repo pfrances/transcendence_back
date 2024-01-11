@@ -13,13 +13,13 @@ export class UpdateChatParticipationDto {
 
   @IsOptional()
   @IsDate()
-  @Transform(({value}) => (value ? new Date(value) : null))
-  mutedUntil?: Date;
+  @Transform(({value}) => (value ? new Date(value) : value === null ? null : undefined))
+  mutedUntil?: Date | null;
 
   @IsOptional()
   @IsDate()
-  @Transform(({value}) => (value ? new Date(value) : null))
-  blockedUntil?: Date;
+  @Transform(({value}) => (value ? new Date(value) : value === null ? null : undefined))
+  blockedUntil?: Date | null;
 
   @IsOptional()
   @IsBoolean()

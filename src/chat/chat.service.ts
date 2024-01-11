@@ -9,7 +9,14 @@ import {
 import {PrismaService} from '../prisma/prisma.service';
 import {CreateChatDto, SendMessageDto} from 'src/chat/dto';
 import {JoinChat, LeaveChat, UpdateChat, updateChatParticipant} from 'src/chat/interface';
-import {WsChatJoin, WsChatLeave, WsChat_FromServer, WsNewMessage} from 'src/shared/WsEvents/chat';
+import {
+  WsChatJoin,
+  WsChatLeave,
+  WsChatParticipationUpdate,
+  WsChatUpdate,
+  WsChat_FromServer,
+  WsNewMessage,
+} from 'src/shared/WsEvents/chat';
 import {RoomNamePrefix} from 'src/webSocket/WsRoom/interface';
 import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
 import {WsException} from '@nestjs/websockets';
@@ -78,6 +85,7 @@ export class ChatService {
         select: {userId: true, nickname: true, avatarUrl: true},
       });
       this.handleWsChatEvent(
+        userId,
         new WsChatJoin.Dto({
           chat: {chatId: chat.chatId, chatName: chat.chatName},
           user,
@@ -94,7 +102,7 @@ export class ChatService {
     const {chatId, userId, chatAvatar, ...chatInfo} = dto;
     const adminParticipation = await this.prisma.chatParticipation.findUnique({
       where: {chatId_userId: {chatId: dto.chatId, userId: dto.userId}},
-      select: {role: true},
+      select: {role: true, userProfile: {select: {userId: true, nickname: true, avatarUrl: true}}},
     });
     if (!adminParticipation) throw new ForbiddenException('This user is not present in this chat');
     if (adminParticipation.role !== 'ADMIN')
@@ -104,10 +112,24 @@ export class ChatService {
       if (chatAvatar)
         chatAvatarUrl = await this.image.uploadFile(chatAvatar.originalname, chatAvatar.buffer);
       try {
-        await this.prisma.chat.update({
+        const chat = await this.prisma.chat.update({
           where: {chatId},
           data: {...filterDefinedProperties({...chatInfo, chatAvatarUrl})},
         });
+
+        this.handleWsChatEvent(
+          adminParticipation.userProfile.userId,
+          new WsChatUpdate.Dto({
+            chat,
+            updater: adminParticipation.userProfile,
+            action: {
+              updateAvatar: chatAvatarUrl ? true : false,
+              updateName: chatInfo.chatName ? true : false,
+              updatePassword: chatInfo.password ? true : false,
+              removePassword: chatInfo.password === '' ? true : false,
+            },
+          }),
+        );
       } catch (err: any) {
         throw new ConflictException('chat name already taken');
       }
@@ -136,6 +158,7 @@ export class ChatService {
     });
     if (!user) throw new NotFoundException(`no such user`);
     this.handleWsChatEvent(
+      userId,
       new WsChatJoin.Dto({
         chat: {chatId, chatName: chat.chatName},
         user,
@@ -278,7 +301,7 @@ export class ChatService {
       const chat = {chatId, chatName: participation.chat.chatName};
       const sender = {userId, nickname, avatarUrl};
       const message = {messageId, messageContent};
-      this.handleWsChatEvent(new WsNewMessage.Dto({chat, sender, message}));
+      this.handleWsChatEvent(userId, new WsNewMessage.Dto({chat, sender, message}));
     } catch (err: any) {
       throw new WsException(err);
     }
@@ -286,40 +309,61 @@ export class ChatService {
 
   async leaveChat(dto: LeaveChat): Promise<void> {
     const {chatId, userId} = dto;
-    const participant = await this.prisma.chatParticipation.delete({
-      where: {chatId_userId: {chatId, userId}},
-      select: {
-        userProfile: {select: {userId: true, nickname: true, avatarUrl: true}},
-        chat: {select: {chatName: true, chatId: true}},
-      },
-    });
-    if (!participant) throw new NotFoundException(`no such participant`);
-    this.handleWsChatEvent(
-      new WsChatLeave.Dto({
-        chat: participant.chat,
-        user: participant.userProfile,
-      }),
-    );
+    try {
+      const participant = await this.prisma.chatParticipation.delete({
+        where: {chatId_userId: {chatId, userId}},
+        select: {
+          userProfile: {select: {userId: true, nickname: true, avatarUrl: true}},
+          chat: {select: {chatName: true, chatId: true}},
+        },
+      });
+      if (!participant) throw new NotFoundException(`no such participant`);
+      this.handleWsChatEvent(
+        userId,
+        new WsChatLeave.Dto({
+          chat: participant.chat,
+          user: participant.userProfile,
+        }),
+      );
+    } catch (err: any) {
+      throw new NotFoundException(`no such participant`);
+    }
   }
 
   async updateChatParticipant(updaterUserId: number, data: updateChatParticipant) {
     const {chatId, userId, ...updateData} = data;
 
-    const partipationOfUser = await this.prisma.chatParticipation.findUnique({
+    const updaterParticipation = await this.prisma.chatParticipation.findUnique({
       where: {chatId_userId: {chatId, userId: updaterUserId}},
-      select: {role: true},
+      select: {role: true, userProfile: {select: {userId: true, nickname: true, avatarUrl: true}}},
     });
-    if (!partipationOfUser) throw new NotFoundException('no such participation');
-    if (partipationOfUser.role !== 'ADMIN') throw new ForbiddenException('no right to update');
+    if (!updaterParticipation) throw new NotFoundException('no such participation');
+    if (updaterParticipation.role !== 'ADMIN') throw new ForbiddenException('no right to update');
 
     const participationToUpdate = await this.prisma.chatParticipation.findUnique({
       where: {chatId_userId: {chatId, userId: data.userId}},
+      select: {
+        userId: true,
+        role: true,
+        chat: {select: {chatName: true, chatId: true}},
+        userProfile: {select: {userId: true, nickname: true, avatarUrl: true}},
+      },
     });
     if (!participationToUpdate) throw new NotFoundException('no such participation');
 
     if ('kick' in updateData) {
       if (updateData.kick == false) throw new BadRequestException('kick must be true or undefined');
-      return await this.leaveChat({chatId, userId: participationToUpdate.userId});
+      await this.leaveChat({chatId, userId: participationToUpdate.userId});
+      this.handleWsChatEvent(
+        updaterUserId,
+        new WsChatParticipationUpdate.Dto({
+          chat: participationToUpdate.chat,
+          updater: updaterParticipation.userProfile,
+          updatedUser: participationToUpdate.userProfile,
+          action: {kick: true},
+        }),
+      );
+      return;
     }
 
     const {blockedUntil, mutedUntil} = updateData;
@@ -334,16 +378,25 @@ export class ChatService {
       where: {chatId_userId: {chatId, userId}},
       data: {...updateData},
     });
+    this.handleWsChatEvent(
+      updaterUserId,
+      new WsChatParticipationUpdate.Dto({
+        chat: participationToUpdate.chat,
+        updater: participationToUpdate.userProfile,
+        updatedUser: participationToUpdate.userProfile,
+        action: {
+          changeRole:
+            updateData.role !== undefined && updateData.role !== participationToUpdate.role,
+          mute: updateData.mutedUntil !== undefined && updateData.mutedUntil !== null,
+          unmute: updateData.mutedUntil === null,
+          kick: false,
+        },
+      }),
+    );
   }
 
-  handleWsChatEvent(eventDto: WsChat_FromServer.template): void {
+  handleWsChatEvent(userId: number, eventDto: WsChat_FromServer.template): void {
     const prefix = this.prefix;
-    let userId: number;
-    if (eventDto instanceof WsNewMessage.Dto) userId = eventDto.message.sender.userId;
-    else
-      userId = (
-        eventDto.message as WsChatJoin.eventMessageTemplate | WsChatLeave.eventMessageTemplate
-      ).user.userId;
     const roomId = eventDto.message.chat.chatId;
     if (eventDto instanceof WsChat_FromServer.chatJoin.Dto)
       this.room.addUserToRoom({prefix, roomId, userId});
