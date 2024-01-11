@@ -382,7 +382,7 @@ export class ChatService {
       updaterUserId,
       new WsChatParticipationUpdate.Dto({
         chat: participationToUpdate.chat,
-        updater: participationToUpdate.userProfile,
+        updater: updaterParticipation.userProfile,
         updatedUser: participationToUpdate.userProfile,
         action: {
           changeRole:

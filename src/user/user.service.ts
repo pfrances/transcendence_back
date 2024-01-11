@@ -14,6 +14,7 @@ import {HashManagerService} from 'src/hashManager/hashManager.service';
 import {ImageService} from 'src/image/image.service';
 import {filterDefinedProperties} from 'src/shared/sharedUtilities/utils.functions.';
 import {WsSocketService} from 'src/webSocket/WsSocket/WsSocket.service';
+import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
 
 @Injectable()
 export class UserService {
@@ -21,6 +22,7 @@ export class UserService {
     private readonly prisma: PrismaService,
     private readonly hashManager: HashManagerService,
     private readonly image: ImageService,
+    private readonly room: WsRoomService,
   ) {}
 
   async getUserIdByNickname(nickname: string): Promise<number> {
@@ -60,6 +62,15 @@ export class UserService {
         },
       });
       if (!user?.profile) throw new InternalServerErrorException('unable to update the user');
+      this.room.broadcastToAll({
+        eventName: 'userProfileUpdate',
+        message: {
+          user: {
+            ...user.profile,
+            isOnline: WsSocketService.isOnline(user.profile.userId),
+          },
+        },
+      });
       return {...user.profile, email: user.email};
     } catch (err: PrismaClientKnownRequestError | any) {
       if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002')

@@ -85,4 +85,8 @@ export class WsRoomService {
       if (client) client.emit(dto.eventName, dto.message);
     });
   }
+
+  broadcastToAll(dto: WsEvents_FromServer.template): void {
+    WsRoomService.server.emit(dto.eventName, dto.message);
+  }
 }
