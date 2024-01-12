@@ -86,6 +86,10 @@ export class ChatService {
       });
       this.handleWsChatEvent(
         userId,
+        new WsChatUpdate.Dto({chat, updater: user, action: {newChat: true}}),
+      );
+      this.handleWsChatEvent(
+        userId,
         new WsChatJoin.Dto({
           chat: {chatId: chat.chatId, chatName: chat.chatName},
           user,
@@ -126,7 +130,7 @@ export class ChatService {
               updateAvatar: chatAvatarUrl ? true : false,
               updateName: chatInfo.chatName ? true : false,
               updatePassword: chatInfo.password ? true : false,
-              removePassword: chatInfo.password === '' ? true : false,
+              removePassword: chatInfo.password === null ? true : false,
             },
           }),
         );
@@ -400,7 +404,8 @@ export class ChatService {
     const roomId = eventDto.message.chat.chatId;
     if (eventDto instanceof WsChat_FromServer.chatJoin.Dto)
       this.room.addUserToRoom({prefix, roomId, userId});
-    this.room.broadcastMessageInRoom({prefix, roomId, ...eventDto});
+    if (eventDto instanceof WsChat_FromServer.chatUpdate.Dto) this.room.broadcastToAll(eventDto);
+    else this.room.broadcastMessageInRoom({prefix, roomId, ...eventDto});
     if (eventDto instanceof WsChat_FromServer.chatLeave.Dto)
       this.room.removeUserFromRoom({prefix, roomId, userId});
   }

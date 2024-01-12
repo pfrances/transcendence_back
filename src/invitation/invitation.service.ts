@@ -58,6 +58,8 @@ export class InvitationsService {
         receiverId: data.receiverId,
         kind: data.kind,
         status: 'PENDING',
+        targetChatId: data.targetChatId,
+        targetGameId: data.targetGameId,
       },
       select: {invitationId: true},
     });
@@ -135,15 +137,15 @@ export class InvitationsService {
         invitationId: true,
         kind: true,
         status: true,
-        targetChatId: kind === 'CHAT',
-        targetGameId: kind === 'GAME',
+        targetChat: kind === 'CHAT' && {select: {chatId: true, chatName: true}},
+        targetGame: kind === 'GAME' && {select: {gameId: true}},
         sender: {select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}}},
         receiver: {select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}}},
       },
     });
 
     const invitationsToSend = invitations.map(invitation => {
-      const {sender, receiver, targetChatId, targetGameId, kind, status, invitationId} = invitation;
+      const {sender, receiver, targetChat, targetGame, kind, status, invitationId} = invitation;
       if (sender.profile === null || receiver.profile === null)
         throw new BadRequestException('No such user');
 
@@ -153,8 +155,9 @@ export class InvitationsService {
         status,
         sender: sender.profile,
         receiver: receiver.profile,
-        ...(kind === 'CHAT' && targetChatId && {targetChatId}),
-        ...(kind === 'GAME' && targetGameId && {targetGameId}),
+        ...(kind === 'CHAT' &&
+          targetChat && {targetChatId: targetChat.chatId, targetChatName: targetChat.chatName}),
+        ...(kind === 'GAME' && targetGame && {targetGameId: targetGame.gameId}),
       } as Invitation;
       return invitationToSend;
     });
