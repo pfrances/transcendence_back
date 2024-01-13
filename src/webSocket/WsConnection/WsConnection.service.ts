@@ -27,23 +27,29 @@ export class WsConnectionService {
   }
 
   async handleClientConnection(client: Socket) {
-    const userId = client.data.userId as number;
-    WsSocketService.addUserToSocketMap(client);
-    this.addClientToRelatedRooms(userId);
-    const user = await this.user.getUserPublicInfo({userId});
-    this.room.broadcastToAll({
-      eventName: WsUser_FromServer.userConnection.eventName,
-      message: {user, type: 'connection'},
-    });
+    try {
+      const userId = client.data.userId as number;
+      WsSocketService.addUserToSocketMap(client);
+      this.addClientToRelatedRooms(userId);
+      const user = await this.user.getUserPublicInfo({userId});
+      this.room.broadcastToAll({
+        eventName: WsUser_FromServer.userConnection.eventName,
+        message: {user, type: 'connection'},
+      });
+    } catch (e) {
+      client.disconnect();
+    }
   }
 
   async handleClientDisconnection(userId: number) {
-    this.removeClientFromRelatedRooms(userId);
-    WsSocketService.removeUserFromSocketsMap(userId);
-    const user = await this.user.getUserPublicInfo({userId});
-    this.room.broadcastToAll({
-      eventName: WsUser_FromServer.userConnection.eventName,
-      message: {user, type: 'disconnection'},
-    });
+    try {
+      this.removeClientFromRelatedRooms(userId);
+      WsSocketService.removeUserFromSocketsMap(userId);
+      const user = await this.user.getUserPublicInfo({userId});
+      this.room.broadcastToAll({
+        eventName: WsUser_FromServer.userConnection.eventName,
+        message: {user, type: 'disconnection'},
+      });
+    } catch (e) {}
   }
 }

@@ -115,7 +115,7 @@ export class FriendService {
       where: {userId},
       select: {userId: true, nickname: true, avatarUrl: true},
     });
-    if (!profile) throw new Error(`user with id '${userId}' not found`);
+    if (!profile) return;
     this.handleWsFriendEvent(new WsFriendConnection.Dto({friend: profile}));
     friendIds.forEach(roomId => {
       this.wsRoom.addUserToRoom({userId, prefix, roomId});
@@ -129,7 +129,7 @@ export class FriendService {
       where: {userId},
       select: {userId: true, nickname: true, avatarUrl: true},
     });
-    if (!profile) throw new Error(`user with id '${userId}' not found`);
+    if (!profile) return;
     this.handleWsFriendEvent(new WsFriendDisconnection.Dto({friend: profile}));
     friendIds.forEach(roomId => {
       this.wsRoom.removeUserFromRoom({userId, prefix, roomId});

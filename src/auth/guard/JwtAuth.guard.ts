@@ -11,18 +11,20 @@ export class JwtAuthGuard extends AuthGuard('jwt') implements CanActivate {
   }
 
   canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
-    if (context.getType() === 'http') {
-      const req = context.switchToHttp().getRequest();
-      const token = req?.headers?.authorization?.split(' ')[1] ?? req?.headers?.access_token;
-      req.user = this.validateToken(token, 'http');
-      return true;
-    } else if (context.getType() === 'ws') {
-      const client = context.switchToWs().getClient();
-      const token = client?.handshake?.auth?.token ?? client?.handshake?.headers?.access_token;
-      client.handshake.auth.payload = this.validateToken(token, 'ws');
-      return true;
-    }
-    throw new Error('unknown context type');
+    try {
+      if (context.getType() === 'http') {
+        const req = context.switchToHttp().getRequest();
+        const token = req?.headers?.authorization?.split(' ')[1] ?? req?.headers?.access_token;
+        req.user = this.validateToken(token, 'http');
+        return true;
+      } else if (context.getType() === 'ws') {
+        const client = context.switchToWs().getClient();
+        const token = client?.handshake?.auth?.token ?? client?.handshake?.headers?.access_token;
+        client.handshake.auth.payload = this.validateToken(token, 'ws');
+        return true;
+      }
+    } catch (err: any) {}
+    return false;
   }
   validateToken(token: string, ctx: 'http' | 'ws' = 'http'): JwtTokenPayload {
     return this.jwt.verifyAndDecodeAuthToken(token, ctx);
