@@ -15,15 +15,23 @@ import {
   WsChatParticipationUpdate,
   WsChatUpdate,
   WsChat_FromServer,
+  WsNewDirectMessage,
   WsNewMessage,
 } from 'src/shared/WsEvents/chat';
 import {RoomNamePrefix} from 'src/webSocket/WsRoom/interface';
 import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
 import {WsException} from '@nestjs/websockets';
 import {HashManagerService} from 'src/hashManager/hashManager.service';
-import {ChatInfo, ChatMessage, ChatOverview} from 'src/shared/HttpEndpoints/interfaces';
+import {
+  ChatInfo,
+  ChatMessage,
+  ChatOverview,
+  DirectMessageInfo,
+} from 'src/shared/HttpEndpoints/interfaces';
 import {ImageService} from 'src/image/image.service';
 import {filterDefinedProperties} from 'src/shared/sharedUtilities/utils.functions.';
+import {WsSocketService} from 'src/webSocket/WsSocket/WsSocket.service';
+import {SendDirectMessageDto} from './dto/SendDirectMessage.dto';
 
 @Injectable()
 export class ChatService {
@@ -54,19 +62,19 @@ export class ChatService {
       const chat = await this.prisma.chat.create({
         data: {
           ...filterDefinedProperties({...createChatData, chatAvatarUrl}),
-          participants: {create: {userId, role: 'ADMIN'}},
+          participants: {create: {userId, role: 'OWNER'}},
         },
         select: {
           chatId: true,
           chatName: true,
           chatAvatarUrl: true,
           password: true,
+          isPrivate: true,
           participants: {
             where: {userId},
             select: {
               role: true,
               mutedUntil: true,
-              blockedUntil: true,
               userId: true,
             },
           },
@@ -79,6 +87,7 @@ export class ChatService {
         chatAvatarUrl: chat.chatAvatarUrl,
         hasPassword: chat.password ? true : false,
         participation: chat.participants[0] || null,
+        isPrivate: chat.isPrivate,
       };
       const user = await this.prisma.profile.findUniqueOrThrow({
         where: {userId},
@@ -109,7 +118,7 @@ export class ChatService {
       select: {role: true, userProfile: {select: {userId: true, nickname: true, avatarUrl: true}}},
     });
     if (!adminParticipation) throw new ForbiddenException('This user is not present in this chat');
-    if (adminParticipation.role !== 'ADMIN')
+    if (adminParticipation.role !== 'OWNER')
       throw new ForbiddenException('This user has no right to update chat information');
     if (Object.keys(chatInfo).length) {
       if (chatInfo.password) chatInfo.password = await this.hashManager.hash(chatInfo.password);
@@ -131,6 +140,7 @@ export class ChatService {
               updateName: chatInfo.chatName ? true : false,
               updatePassword: chatInfo.password ? true : false,
               removePassword: chatInfo.password === null ? true : false,
+              updatePrivacy: chatInfo.isPrivate !== undefined ? true : false,
             },
           }),
         );
@@ -144,9 +154,16 @@ export class ChatService {
     const {chatId, userId, password} = dto;
     const chat = await this.prisma.chat.findUnique({
       where: {chatId},
-      select: {password: true, chatId: true, chatName: true},
+      select: {password: true, chatId: true, chatName: true, isPrivate: true},
     });
     if (!chat) throw new NotFoundException(`no such chat`);
+    if (chat.isPrivate && !hasInvitation)
+      throw new ForbiddenException(`this chat is private, you need an invitation`);
+    const banList = await this.prisma.chatBan.findMany({
+      where: {chatId},
+      select: {userId: true},
+    });
+    if (banList.find(ban => ban.userId === userId)) throw new ForbiddenException(`banned`);
     if (!hasInvitation && !(await this.hashManager.verify(chat?.password, password)))
       throw new ForbiddenException(`invalid password`);
 
@@ -168,6 +185,74 @@ export class ChatService {
         user,
       }),
     );
+  }
+
+  async getAllDirectMessages(userId: number, correspondantId: number): Promise<DirectMessageInfo> {
+    const correspondant = await this.prisma.profile.findUnique({
+      where: {userId: correspondantId},
+      select: {userId: true, nickname: true, avatarUrl: true},
+    });
+    if (!correspondant) throw new NotFoundException(`no such correspondant`);
+    const blockedUserIds = await this.prisma.blockedUser.findMany({
+      where: {userId: {in: [userId, correspondantId]}},
+      select: {blockedUserId: true},
+    });
+    if (blockedUserIds.find(block => block.blockedUserId === correspondantId))
+      throw new ForbiddenException(`user blocked`);
+    if (blockedUserIds.find(block => block.blockedUserId === userId))
+      throw new ForbiddenException(`you are blocked`);
+
+    const messages = await this.prisma.directMessage.findMany({
+      where: {
+        senderId: {in: [userId, correspondantId]},
+        receiverId: {in: [userId, correspondantId]},
+      },
+      select: {
+        messageId: true,
+        createdAt: true,
+        messageContent: true,
+        senderId: true,
+        receiverId: true,
+      },
+      orderBy: {createdAt: 'asc'},
+    });
+    return {
+      messages,
+      userProfile: {...correspondant, isOnline: WsSocketService.isOnline(correspondantId)},
+    };
+  }
+
+  async sendDirectMessage(
+    senderId: number,
+    {userId, messageContent}: SendDirectMessageDto,
+  ): Promise<void> {
+    const sender = await this.prisma.profile.findUnique({
+      where: {userId: senderId},
+      select: {userId: true, nickname: true, avatarUrl: true},
+    });
+    if (!sender) throw new NotFoundException(`no such sender`);
+
+    const correspondant = await this.prisma.profile.findUnique({
+      where: {userId},
+      select: {userId: true},
+    });
+    if (!correspondant) throw new NotFoundException(`no such correspondant`);
+    const blockedUserIds = await this.prisma.blockedUser.findMany({
+      where: {userId: {in: [senderId, userId]}},
+      select: {blockedUserId: true},
+    });
+    if (blockedUserIds.find(block => block.blockedUserId === userId))
+      throw new ForbiddenException(`user blocked`);
+    if (blockedUserIds.find(block => block.blockedUserId === senderId))
+      throw new ForbiddenException(`you are blocked`);
+
+    const {messageId} = await this.prisma.directMessage.create({
+      data: {senderId, receiverId: userId, messageContent},
+      select: {messageId: true},
+    });
+    const message = {messageId, messageContent};
+    this.handleWsChatEvent(senderId, new WsNewDirectMessage.Dto({sender, message}));
+    this.handleWsChatEvent(userId, new WsNewDirectMessage.Dto({sender, message}));
   }
 
   async getAllMessagesFromChatId(chatId: number): Promise<ChatMessage[]> {
@@ -211,11 +296,11 @@ export class ChatService {
         chatName: true,
         chatAvatarUrl: true,
         password: true,
+        isPrivate: true,
         participants: {
           select: {
             role: true,
             mutedUntil: true,
-            blockedUntil: true,
             userId: true,
           },
         },
@@ -224,7 +309,14 @@ export class ChatService {
 
     if (!chatOverview) throw new NotFoundException(`no such chat`);
 
-    const chatMessages = await this.getAllMessagesFromChatId(chatId);
+    let chatMessages = await this.getAllMessagesFromChatId(chatId);
+    const blockUserIds = await this.prisma.blockedUser.findMany({
+      where: {userId},
+      select: {blockedUserId: true},
+    });
+    chatMessages = chatMessages.filter(
+      message => !blockUserIds.find(block => block.blockedUserId === message.senderId),
+    );
     const hasPassword = chatOverview.password ? true : false;
     const participation =
       chatOverview.participants.find(participation => participation.userId === userId) || null;
@@ -239,6 +331,7 @@ export class ChatService {
         chatAvatarUrl: chatOverview.chatAvatarUrl,
         hasPassword,
         participation,
+        isPrivate: chatOverview.isPrivate,
       },
       chatMessages,
       otherParticipations,
@@ -255,7 +348,6 @@ export class ChatService {
             userProfile: {select: {userId: true, nickname: true, avatarUrl: true}},
             role: true,
             mutedUntil: true,
-            blockedUntil: true,
             userId: true,
           },
         },
@@ -263,16 +355,19 @@ export class ChatService {
         chatName: true,
         chatAvatarUrl: true,
         password: true,
+        isPrivate: true,
       },
     });
     const chatList: ChatOverview[] = [];
     for (const chat of chats) {
+      if (chat.isPrivate && !chat.participants.length) continue;
       const overview: ChatOverview = {
         chatId: chat.chatId,
         chatName: chat.chatName,
         chatAvatarUrl: chat.chatAvatarUrl,
         hasPassword: chat?.password ? true : false,
         participation: chat.participants[0] || null,
+        isPrivate: chat.isPrivate,
       };
       chatList.push(overview);
     }
@@ -286,15 +381,13 @@ export class ChatService {
         chatId: true,
         chat: {select: {chatName: true}},
         userId: true,
-        blockedUntil: true,
         mutedUntil: true,
         userProfile: {select: {nickname: true, avatarUrl: true}},
       },
     });
     if (!participation) throw new WsException('no such chat available for this user');
     const now = Date.now();
-    const {blockedUntil, mutedUntil} = participation;
-    if (blockedUntil && blockedUntil.getTime() > now) throw new WsException('user still blocked');
+    const {mutedUntil} = participation;
     if (mutedUntil && mutedUntil.getTime() > now) throw new WsException('user still mute');
     try {
       const {messageId} = await this.prisma.message.create({
@@ -342,7 +435,7 @@ export class ChatService {
       select: {role: true, userProfile: {select: {userId: true, nickname: true, avatarUrl: true}}},
     });
     if (!updaterParticipation) throw new NotFoundException('no such participation');
-    if (updaterParticipation.role !== 'ADMIN') throw new ForbiddenException('no right to update');
+    if (updaterParticipation.role === 'MEMBER') throw new ForbiddenException('no right to update');
 
     const participationToUpdate = await this.prisma.chatParticipation.findUnique({
       where: {chatId_userId: {chatId, userId: data.userId}},
@@ -354,6 +447,29 @@ export class ChatService {
       },
     });
     if (!participationToUpdate) throw new NotFoundException('no such participation');
+    if (participationToUpdate.role === 'OWNER')
+      throw new ForbiddenException('unable to update owner');
+    if ('ban' in updateData) {
+      if (updateData.ban == true) {
+        await this.leaveChat({chatId, userId: participationToUpdate.userId});
+        this.handleWsChatEvent(
+          updaterUserId,
+          new WsChatParticipationUpdate.Dto({
+            chat: participationToUpdate.chat,
+            updater: updaterParticipation.userProfile,
+            updatedUser: participationToUpdate.userProfile,
+            action: {ban: true},
+          }),
+        );
+        await this.prisma.chatBan.update({
+          where: {chatId_userId: {chatId, userId}},
+          data: {chatId, userId},
+        });
+      } else if (updateData.ban == false) {
+        await this.prisma.chatBan.delete({where: {chatId_userId: {chatId, userId}}});
+      } else throw new BadRequestException('ban must be true or false');
+      return;
+    }
 
     if ('kick' in updateData) {
       if (updateData.kick == false) throw new BadRequestException('kick must be true or undefined');
@@ -370,11 +486,8 @@ export class ChatService {
       return;
     }
 
-    const {blockedUntil, mutedUntil} = updateData;
+    const {mutedUntil} = updateData;
     const now = Date.now();
-
-    if (blockedUntil && blockedUntil.getTime() < now)
-      throw new BadRequestException('Unable to block a user until a past date');
 
     if (mutedUntil && mutedUntil.getTime() < now)
       throw new BadRequestException('Unable to mute a user until a past date');
@@ -400,6 +513,10 @@ export class ChatService {
   }
 
   handleWsChatEvent(userId: number, eventDto: WsChat_FromServer.template): void {
+    if ('sender' in eventDto.message) {
+      return this.room.sendMessageToUser(userId, eventDto);
+    }
+
     const prefix = this.prefix;
     const roomId = eventDto.message.chat.chatId;
     if (eventDto instanceof WsChat_FromServer.chatJoin.Dto)

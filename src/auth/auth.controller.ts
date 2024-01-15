@@ -20,6 +20,7 @@ import {
   Http2FA,
   HttpAuth,
   HttpAuth42,
+  HttpAuth42VerifyCode,
   HttpRefresh,
   HttpResend2FA,
   HttpSignIn,
@@ -31,6 +32,7 @@ import {Resend2FADto} from './dto/Resend2fa.dto';
 import {UserPrivateProfile} from 'src/shared/HttpEndpoints/interfaces';
 import {FileInterceptor} from '@nestjs/platform-express';
 import {ConfigService} from '@nestjs/config';
+import {Auth42VerifyCodeDto} from './dto/Auth42VerifyCode';
 
 @Controller(HttpAuth.endPointBase)
 export class AuthController {
@@ -52,12 +54,20 @@ export class AuthController {
   @Get(HttpAuth42.endPoint_CB)
   @UseGuards(FortyTwoAuthGuard)
   async handle42Callback(@Req() req: Request, @Res() res: Response): Promise<void> {
-    const {auth2FACode, userId} = await this.authService.handle42Callback(
-      req.user as UserPrivateProfile,
-    );
-    res.redirect(301, `${this.frontUrl}/auth?auth2FACode=${auth2FACode}&userId=${userId}`);
+    const data = await this.authService.handle42Callback(req.user as UserPrivateProfile);
+    if ('auth2FACode' in data)
+      res.redirect(
+        301,
+        `${this.frontUrl}/auth?auth2FACode=${data.auth2FACode}&userId=${data.userId}`,
+      );
+    else if ('code' in data)
+      res.redirect(
+        301,
+        `${this.frontUrl}/auth/code?_42AuthCode=${data.code}&userId=${data.userId}`,
+      );
   }
 
+  @Get()
   @UseInterceptors(FileInterceptor('avatar'))
   @Post(HttpSignUp.endPoint)
   async signup(
@@ -76,6 +86,13 @@ export class AuthController {
     dto.avatar = avatar;
     const resBody = await this.authService.signup(dto);
     return new HttpSignUp.resTemplate(resBody);
+  }
+
+  @Post(HttpAuth42VerifyCode.endPoint)
+  async signup42VerifyCode(
+    @Body() dto: Auth42VerifyCodeDto,
+  ): Promise<HttpAuth42VerifyCode.resTemplate> {
+    return await this.authService.verify42(dto);
   }
 
   @Post(HttpSignIn.endPoint)

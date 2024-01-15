@@ -23,6 +23,7 @@ import {
   HttpCreateChat,
   HttpGetAllChats,
   HttpGetChatInfo,
+  HttpGetDirectMessages,
   HttpJoinChat,
   HttpLeaveChat,
   HttpUpdateChat,
@@ -126,5 +127,13 @@ export class ChatController {
     if (Object.keys(dto).length === 0) throw new UnprocessableEntityException('no data to update');
     await this.chat.updateChatParticipant(userId, {chatId, ...dto});
     return {};
+  }
+
+  @Get(HttpGetDirectMessages.endPoint)
+  async getDirectMessages(
+    @GetInfoFromJwt('userId') userId: number,
+    @Param('userId', ParseIntPipe) correpondantId: number,
+  ): Promise<HttpGetDirectMessages.resTemplate> {
+    return await this.chat.getAllDirectMessages(userId, correpondantId);
   }
 }

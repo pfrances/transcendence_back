@@ -17,11 +17,6 @@ export class UpdateChatParticipationDto {
   mutedUntil?: Date | null;
 
   @IsOptional()
-  @IsDate()
-  @Transform(({value}) => (value ? new Date(value) : value === null ? null : undefined))
-  blockedUntil?: Date | null;
-
-  @IsOptional()
   @IsBoolean()
   kick?: boolean;
 
@@ -29,7 +24,6 @@ export class UpdateChatParticipationDto {
     this.userId = data?.userId;
     this.role = data?.role;
     this.mutedUntil = data?.mutedUntil;
-    this.blockedUntil = data?.blockedUntil;
     this.kick = data?.kick;
   }
 }

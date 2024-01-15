@@ -7,9 +7,9 @@ export type updateChatParticipant = {
   | {
       role?: Role;
       mutedUntil?: Date | null;
-      blockedUntil?: Date | null;
     }
   | {kick: boolean}
+  | {ban: boolean}
 );
 
 export interface UpdateChat {
@@ -17,5 +17,6 @@ export interface UpdateChat {
   chatId: number;
   chatName?: string;
   password?: string | null;
+  isPrivate?: boolean;
   chatAvatar?: Express.Multer.File;
 }

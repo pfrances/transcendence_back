@@ -164,4 +164,40 @@ export class InvitationsService {
 
     return invitationsToSend;
   }
+
+  async getInvitationsFromTo(userId: number, targetUserId: number): Promise<Invitation[]> {
+    const invitations = await this.prisma.invitation.findMany({
+      where: {
+        senderId: {in: [userId, targetUserId]},
+        receiverId: {in: [userId, targetUserId]},
+        status: 'PENDING',
+      },
+      select: {
+        invitationId: true,
+        kind: true,
+        status: true,
+        targetChat: {select: {chatId: true, chatName: true}},
+        targetGame: {select: {gameId: true}},
+        sender: {select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}}},
+        receiver: {select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}}},
+      },
+    });
+    return invitations.map(invitation => {
+      const {sender, receiver, targetChat, targetGame, kind, status, invitationId} = invitation;
+      if (sender.profile === null || receiver.profile === null)
+        throw new BadRequestException('No such user');
+
+      const invitationToSend = {
+        invitationId,
+        kind,
+        status,
+        sender: sender.profile,
+        receiver: receiver.profile,
+        ...(kind === 'CHAT' &&
+          targetChat && {targetChatId: targetChat.chatId, targetChatName: targetChat.chatName}),
+        ...(kind === 'GAME' && targetGame && {targetGameId: targetGame.gameId}),
+      } as Invitation;
+      return invitationToSend;
+    });
+  }
 }

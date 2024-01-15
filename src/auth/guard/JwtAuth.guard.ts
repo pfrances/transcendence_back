@@ -1,4 +1,4 @@
-import {CanActivate, ExecutionContext, Injectable} from '@nestjs/common';
+import {CanActivate, ExecutionContext, Injectable, UnauthorizedException} from '@nestjs/common';
 import {AuthGuard} from '@nestjs/passport';
 import {JwtTokenPayload} from '../interface';
 import {Observable} from 'rxjs';
@@ -23,7 +23,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') implements CanActivate {
         client.handshake.auth.payload = this.validateToken(token, 'ws');
         return true;
       }
-    } catch (err: any) {}
+    } catch (err: any) {
+      throw new UnauthorizedException('invalid token');
+    }
     return false;
   }
   validateToken(token: string, ctx: 'http' | 'ws' = 'http'): JwtTokenPayload {

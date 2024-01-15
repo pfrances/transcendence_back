@@ -8,6 +8,7 @@ import {InvitationKind} from '@prisma/client';
 import {SendInvitationDto} from './dto/SendInvitation.dto';
 import {InvitationAction_Url} from 'src/shared/HttpEndpoints/types';
 import {
+  HttpGetInvitationFromTo,
   HttpGetInvitations,
   HttpInvitation,
   HttpSendInvitation,
@@ -52,6 +53,15 @@ export class InvitationController {
     @Param('kind', new InvitationKindPipe()) kind: InvitationKind,
   ): Promise<HttpGetInvitations.resTemplate> {
     const invitations = await this.invitation.getInvitations(userId, kind);
+    return {invitations};
+  }
+
+  @Get(HttpGetInvitationFromTo.endPoint)
+  async getInvitationsFromToHandler(
+    @GetInfoFromJwt('userId') userId: number,
+    @Param('userId', ParseIntPipe) targetUserId: number,
+  ): Promise<HttpGetInvitationFromTo.resTemplate> {
+    const invitations = await this.invitation.getInvitationsFromTo(userId, targetUserId);
     return {invitations};
   }
 }

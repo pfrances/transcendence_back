@@ -2,7 +2,6 @@ import {ExecutionContext, Injectable} from '@nestjs/common';
 import {ConfigService} from '@nestjs/config';
 import {AuthGuard} from '@nestjs/passport';
 import {Request, Response} from 'express';
-import {Observable} from 'rxjs';
 import {HttpAuth42} from 'src/shared/HttpEndpoints/auth';
 
 @Injectable()
@@ -14,7 +13,7 @@ export class FortyTwoAuthGuard extends AuthGuard('42auth') implements FortyTwoAu
     this.frontUrl = this.config.getOrThrow('FRONTEND_URL');
   }
 
-  canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest() as Request;
 
     const codeMissing = req.path === HttpAuth42.endPointFull_CB && !req.query.code;
@@ -26,7 +25,13 @@ export class FortyTwoAuthGuard extends AuthGuard('42auth') implements FortyTwoAu
       res.redirect(`${this.frontUrl}/auth?OAuth42Error=Unauthorized`);
       return false;
     }
-
-    return super.canActivate(context);
+    try {
+      const res = (await super.canActivate(context)) as boolean;
+      return res;
+    } catch (err) {
+      const res = context.switchToHttp().getResponse() as Response;
+      res.redirect(`${this.frontUrl}/auth?OAuth42Error=Unauthorized`);
+      return false;
+    }
   }
 }

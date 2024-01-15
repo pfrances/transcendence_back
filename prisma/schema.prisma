@@ -12,6 +12,7 @@ model User {
   user42Id Int?    @unique
   email    String
   password String?
+  hasSet2Fa Boolean @default(false)
 
   profile Profile? @relation("profile")
   friends Friend[] @relation("friend")
@@ -19,7 +20,25 @@ model User {
   sentInvitations     Invitation[] @relation("SentInvitations")
   receivedInvitations Invitation[] @relation("ReceivedInvitations")
 
+  sentDirectMessages   DirectMessage[] @relation("SentDirectMessages")
+  receivedDirectMessages DirectMessage[] @relation("ReceivedDirectMessages")
+
+  blockedUsers BlockedUser[] @relation("blocked")
+  blockedBy    BlockedUser[] @relation("blockedBy")
+  banList      ChatBan[] 
+
   @@map("Users")
+}
+
+model BlockedUser {
+  userId   Int
+  blockedUserId Int
+
+  user   User    @relation("blocked", fields: [userId], references: [userId], onDelete: Cascade)
+  blockedUser User @relation("blockedBy", fields: [blockedUserId], references: [userId], onDelete: Cascade)
+
+  @@id([userId, blockedUserId])
+  @@map("BlockedUsers")
 }
 
 model Profile {
@@ -82,12 +101,26 @@ model Chat {
   chatName      String  @unique
   chatAvatarUrl String?
   password      String?
+  isPrivate     Boolean @default(false)
+
+ banList      ChatBan[]
 
   invitations  Invitation[]
   participants ChatParticipation[]
   messages     Message[]
 
   @@map("Chats")
+}
+
+model ChatBan {
+  chatId Int
+  userId Int
+
+  chat   Chat @relation(fields: [chatId], references: [chatId], onDelete: Cascade)
+  user   User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@id([chatId, userId])
+  @@map("ChatBans")
 }
 
 model Message {
@@ -102,10 +135,22 @@ model Message {
   @@map("Messages")
 }
 
+model DirectMessage {
+  messageId Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  senderId         Int
+  sender           User @relation("SentDirectMessages", fields: [senderId], references: [userId], onDelete: Cascade)
+  receiverId       Int
+  receiver         User @relation("ReceivedDirectMessages", fields: [receiverId], references: [userId], onDelete: Cascade)
+  messageContent String
+
+  @@map("DirectMessages")
+}
+
 model ChatParticipation {
   role         Role      @default(MEMBER)
   mutedUntil   DateTime?
-  blockedUntil DateTime?
 
   chatId Int
   chat   Chat @relation(fields: [chatId], references: [chatId], onDelete: Cascade)
@@ -118,6 +163,7 @@ model ChatParticipation {
 }
 
 enum Role {
+  OWNER
   ADMIN
   MEMBER
 }

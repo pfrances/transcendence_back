@@ -2,14 +2,25 @@ import {Injectable, Scope} from '@nestjs/common';
 import {WsException} from '@nestjs/websockets';
 import {Socket} from 'socket.io';
 import {JwtTokenPayload} from 'src/auth/interface';
+import {UserStatusType} from 'src/shared/HttpEndpoints/interfaces';
 
 @Injectable({scope: Scope.DEFAULT})
 export class WsSocketService {
   private static ClientSocketMap = new Map<number, Socket[]>();
   private static ClientJwtMap = new Map<string, JwtTokenPayload>();
+  private static UserStatusMap = new Map<number, UserStatusType>();
 
   static isOnline(userId: number): boolean {
     return WsSocketService.ClientSocketMap.has(userId);
+  }
+
+  static setUserStatus(userId: number, status: UserStatusType): void {
+    if (!WsSocketService.isOnline(userId)) return;
+    WsSocketService.UserStatusMap.set(userId, status);
+  }
+
+  static getUserStatus(userId: number): UserStatusType {
+    return WsSocketService.UserStatusMap.get(userId) ?? 'offline';
   }
 
   static getClientSocketsByUserId(userId: number): Socket[] {
