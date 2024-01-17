@@ -43,6 +43,20 @@ export class WsRoomService {
     return `${template.prefix}${template.roomId}`;
   }
 
+  public deleteRoom(roomName: RoomName): void {
+    const name = this.getRoomNameFromTemplate(roomName);
+    const room = WsRoomService.roomsMap.get(name);
+    if (room) {
+      room.forEach(userId => {
+        const clients = WsSocketService.getClientSocketsByUserId(userId);
+        clients?.forEach(client => {
+          if (client) client.leave(name);
+        });
+      });
+      this.deleteServerRoom(name);
+    }
+  }
+
   addUserToRoom(data: JoinLeaveRoom): void {
     const clients = WsSocketService.getClientSocketsByUserId(data.userId);
     if (clients && clients.length > 0) {

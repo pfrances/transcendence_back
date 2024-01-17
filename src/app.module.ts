@@ -13,6 +13,7 @@ import {ImageModule} from './image/image.module';
 import {HashManagerModule} from './hashManager/hashManager.module';
 import {MailModule} from './mail/mail.module';
 import {ConfigModule} from '@nestjs/config';
+import { GameModule } from './game/game.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import {ConfigModule} from '@nestjs/config';
     ImageModule,
     HashManagerModule,
     MailModule,
+    GameModule,
   ],
 })
 export class AppModule {}

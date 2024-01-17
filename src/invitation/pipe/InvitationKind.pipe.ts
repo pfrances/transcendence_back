@@ -9,7 +9,6 @@ export class InvitationKindPipe implements PipeTransform {
   private getFormatedKind(kind: InvitationKind_Url): InvitationKind {
     if (kind === 'chat') return 'CHAT';
     else if (kind == 'friend') return 'FRIEND';
-    else if (kind == 'game') return 'GAME';
     else throw new NotInEnumException(kind, InvitationKindEnum_Url);
   }
 

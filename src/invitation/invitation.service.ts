@@ -36,20 +36,6 @@ export class InvitationsService {
       if (!chat) throw new BadRequestException('No such chat exist');
       if (chat?.participants.find(p => p.userId === data.receiverId))
         throw new BadRequestException('User already present in chatroom');
-    } else if (data.kind === 'GAME') {
-      if (!data.targetGameId) throw new BadRequestException('No targetGameId provided');
-
-      const game = await this.prisma.game.findUnique({
-        where: {gameId: data.targetGameId},
-        select: {gameId: true, gameStatus: true, participants: {select: {userId: true}}},
-      });
-      if (!game) throw new BadRequestException('No such game exist');
-
-      if (game?.gameStatus !== 'WAITING_FOR_PLAYER')
-        throw new BadRequestException('This game is no longer waiting for new player');
-
-      if (game?.participants.find(p => p.userId === data.receiverId))
-        throw new BadRequestException('User already present in this game');
     }
 
     const pendingInvitation = await this.prisma.invitation.findFirst({
@@ -59,7 +45,6 @@ export class InvitationsService {
         kind: data.kind,
         status: 'PENDING',
         targetChatId: data.targetChatId,
-        targetGameId: data.targetGameId,
       },
       select: {invitationId: true},
     });
@@ -68,10 +53,10 @@ export class InvitationsService {
 
   async sendInvitation(data: SendInvitation): Promise<void> {
     await this.checkSentInvitation(data);
-    let {senderId, receiverId, kind, targetChatId, targetGameId} = data;
+    let {senderId, receiverId, kind, targetChatId} = data;
     try {
       let invitation = await this.prisma.invitation.create({
-        data: {senderId, receiverId, kind, targetChatId, targetGameId},
+        data: {senderId, receiverId, kind, targetChatId},
         select: {
           invitationId: true,
           senderId: true,
@@ -79,7 +64,6 @@ export class InvitationsService {
           status: true,
           kind: true,
           targetChatId: kind === 'CHAT',
-          targetGameId: kind === 'GAME',
         },
       });
       const wsDto = new WsNewInvitation.Dto(invitation);
@@ -94,7 +78,6 @@ export class InvitationsService {
       this.chat.joinChat({userId: dto.receiverId, chatId: dto.targetChatId}, true);
     } else if (dto.kind === 'FRIEND') {
       this.friend.setRelationship({userId: dto.senderId, targetUserId: dto.receiverId});
-    } else if (dto.kind === 'GAME') {
     }
   }
 
@@ -111,7 +94,6 @@ export class InvitationsService {
           kind: true,
           status: true,
           targetChatId: kind === 'CHAT',
-          targetGameId: kind === 'GAME',
         },
       });
       if (targetStatus === 'ACCEPTED')
@@ -138,14 +120,13 @@ export class InvitationsService {
         kind: true,
         status: true,
         targetChat: kind === 'CHAT' && {select: {chatId: true, chatName: true}},
-        targetGame: kind === 'GAME' && {select: {gameId: true}},
         sender: {select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}}},
         receiver: {select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}}},
       },
     });
 
     const invitationsToSend = invitations.map(invitation => {
-      const {sender, receiver, targetChat, targetGame, kind, status, invitationId} = invitation;
+      const {sender, receiver, targetChat, kind, status, invitationId} = invitation;
       if (sender.profile === null || receiver.profile === null)
         throw new BadRequestException('No such user');
 
@@ -157,7 +138,6 @@ export class InvitationsService {
         receiver: receiver.profile,
         ...(kind === 'CHAT' &&
           targetChat && {targetChatId: targetChat.chatId, targetChatName: targetChat.chatName}),
-        ...(kind === 'GAME' && targetGame && {targetGameId: targetGame.gameId}),
       } as Invitation;
       return invitationToSend;
     });
@@ -177,13 +157,12 @@ export class InvitationsService {
         kind: true,
         status: true,
         targetChat: {select: {chatId: true, chatName: true}},
-        targetGame: {select: {gameId: true}},
         sender: {select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}}},
         receiver: {select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}}},
       },
     });
     return invitations.map(invitation => {
-      const {sender, receiver, targetChat, targetGame, kind, status, invitationId} = invitation;
+      const {sender, receiver, targetChat, kind, status, invitationId} = invitation;
       if (sender.profile === null || receiver.profile === null)
         throw new BadRequestException('No such user');
 
@@ -195,7 +174,6 @@ export class InvitationsService {
         receiver: receiver.profile,
         ...(kind === 'CHAT' &&
           targetChat && {targetChatId: targetChat.chatId, targetChatName: targetChat.chatName}),
-        ...(kind === 'GAME' && targetGame && {targetGameId: targetGame.gameId}),
       } as Invitation;
       return invitationToSend;
     });

@@ -22,7 +22,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "pretest:e2e": "dotenv -c test -- docker compose down -v && dotenv -c test -- docker compose up -d && sleep 2 && dotenv -c test -- npx prisma migrate reset --force",
     "test:e2e": "dotenv -c test -- jest --runInBand --no-cache --watch --silent=false --config test/jest-e2e.json",
-    "db:restart": "docker compose down -v && docker compose up -d && sleep 2"
+    "db:restart": "docker compose down && docker compose up -d && sleep 2"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.485.0",

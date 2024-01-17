@@ -149,7 +149,9 @@ export class UserService {
         },
       });
       if (!user?.profile) throw new InternalServerErrorException('user profile not found');
-      return {...user.profile, email: user.email, hasSet2Fa: user.hasSet2Fa};
+      const {userId, nickname, avatarUrl} = user.profile;
+      const {email, hasSet2Fa} = user;
+      return {userId, nickname, avatarUrl, email, hasSet2Fa};
     }
     const user = await this.prisma.profile.findUnique({
       where: {...userInfo},
@@ -161,7 +163,9 @@ export class UserService {
       },
     });
     if (!user) throw new InternalServerErrorException('user profile not found');
-    return {...user, email: user.user.email, hasSet2Fa: user.user.hasSet2Fa};
+    const {email, hasSet2Fa} = user.user;
+    const {userId, nickname, avatarUrl} = user;
+    return {userId, nickname, avatarUrl, email, hasSet2Fa};
   }
 
   async verifyUserCredential({nickname, password}: SignInDto): Promise<UserPrivateProfile> {

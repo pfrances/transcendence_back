@@ -8,10 +8,10 @@ datasource db {
 }
 
 model User {
-  userId   Int     @id @default(autoincrement())
-  user42Id Int?    @unique
-  email    String
-  password String?
+  userId    Int     @id @default(autoincrement())
+  user42Id  Int?    @unique
+  email     String
+  password  String?
   hasSet2Fa Boolean @default(false)
 
   profile Profile? @relation("profile")
@@ -20,21 +20,21 @@ model User {
   sentInvitations     Invitation[] @relation("SentInvitations")
   receivedInvitations Invitation[] @relation("ReceivedInvitations")
 
-  sentDirectMessages   DirectMessage[] @relation("SentDirectMessages")
+  sentDirectMessages     DirectMessage[] @relation("SentDirectMessages")
   receivedDirectMessages DirectMessage[] @relation("ReceivedDirectMessages")
 
   blockedUsers BlockedUser[] @relation("blocked")
   blockedBy    BlockedUser[] @relation("blockedBy")
-  banList      ChatBan[] 
+  banList      ChatBan[]
 
   @@map("Users")
 }
 
 model BlockedUser {
-  userId   Int
+  userId        Int
   blockedUserId Int
 
-  user   User    @relation("blocked", fields: [userId], references: [userId], onDelete: Cascade)
+  user        User @relation("blocked", fields: [userId], references: [userId], onDelete: Cascade)
   blockedUser User @relation("blockedBy", fields: [blockedUserId], references: [userId], onDelete: Cascade)
 
   @@id([userId, blockedUserId])
@@ -42,13 +42,14 @@ model BlockedUser {
 }
 
 model Profile {
-  userId             Int                 @id
-  user               User                @relation("profile", fields: [userId], references: [userId], onDelete: Cascade)
-  nickname           String              @unique
-  avatarUrl          String?
-  Friends            Friend[]            @relation("friendOf")
-  chatParticipations ChatParticipation[]
+  userId    Int      @id
+  user      User     @relation("profile", fields: [userId], references: [userId], onDelete: Cascade)
+  nickname  String   @unique
+  avatarUrl String?
+  Friends   Friend[] @relation("friendOf")
+
   gameParticipations GameParticipation[]
+  chatParticipations ChatParticipation[]
 }
 
 model Friend {
@@ -76,9 +77,6 @@ model Invitation {
   targetChatId Int?
   targetChat   Chat? @relation(fields: [targetChatId], references: [chatId], onDelete: Cascade)
 
-  targetGameId Int?
-  targetGame   Game?
-
   @@map("Invitations")
 }
 
@@ -92,7 +90,6 @@ enum InvitationStatus {
 enum InvitationKind {
   FRIEND
   CHAT
-  GAME
 }
 
 model Chat {
@@ -103,7 +100,7 @@ model Chat {
   password      String?
   isPrivate     Boolean @default(false)
 
- banList      ChatBan[]
+  banList ChatBan[]
 
   invitations  Invitation[]
   participants ChatParticipation[]
@@ -116,8 +113,8 @@ model ChatBan {
   chatId Int
   userId Int
 
-  chat   Chat @relation(fields: [chatId], references: [chatId], onDelete: Cascade)
-  user   User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  chat Chat @relation(fields: [chatId], references: [chatId], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
   @@id([chatId, userId])
   @@map("ChatBans")
@@ -139,18 +136,18 @@ model DirectMessage {
   messageId Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
 
-  senderId         Int
-  sender           User @relation("SentDirectMessages", fields: [senderId], references: [userId], onDelete: Cascade)
-  receiverId       Int
-  receiver         User @relation("ReceivedDirectMessages", fields: [receiverId], references: [userId], onDelete: Cascade)
+  senderId       Int
+  sender         User   @relation("SentDirectMessages", fields: [senderId], references: [userId], onDelete: Cascade)
+  receiverId     Int
+  receiver       User   @relation("ReceivedDirectMessages", fields: [receiverId], references: [userId], onDelete: Cascade)
   messageContent String
 
   @@map("DirectMessages")
 }
 
 model ChatParticipation {
-  role         Role      @default(MEMBER)
-  mutedUntil   DateTime?
+  role       Role      @default(MEMBER)
+  mutedUntil DateTime?
 
   chatId Int
   chat   Chat @relation(fields: [chatId], references: [chatId], onDelete: Cascade)
@@ -169,7 +166,7 @@ enum Role {
 }
 
 model GameParticipation {
-  Point    Int      @default(0)
+  score    Int      @default(0)
   isWinner Boolean?
 
   gameId Int
@@ -186,25 +183,15 @@ model Game {
   gameId Int @id @default(autoincrement())
 
   scoreToWin Int        @default(3)
-  gameStatus GameStatus @default(WAITING_FOR_PLAYER)
-
-  playerOnePaddlePos Int @default(0)
-  playerTwoPaddlePos Int @default(0)
-
-  ballPositionX Int @default(0)
-  ballPositionY Int @default(0)
-
-  invitationId Int                 @unique
-  invitation   Invitation          @relation(fields: [invitationId], references: [invitationId], onDelete: Cascade)
+  gameStatus GameStatus @default(IN_PROGRESS)
+  
   participants GameParticipation[]
 
   @@map("Games")
 }
 
 enum GameStatus {
-  WAITING_FOR_PLAYER
   IN_PROGRESS
-  PAUSED
   FINISHED
   CANCELED
 }

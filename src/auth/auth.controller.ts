@@ -67,7 +67,6 @@ export class AuthController {
       );
   }
 
-  @Get()
   @UseInterceptors(FileInterceptor('avatar'))
   @Post(HttpSignUp.endPoint)
   async signup(

@@ -1,6 +1,6 @@
 import {WsEvents_FromServer} from 'src/shared/WsEvents';
 
-export type RoomNamePrefix = 'Friend_Info-' | 'Chatroom-' | 'Game-';
+export type RoomNamePrefix = 'Friend_Info-' | 'Chatroom-' | 'Game-' | 'Game_In_Creation-';
 
 export interface RoomName {
   prefix: RoomNamePrefix;
