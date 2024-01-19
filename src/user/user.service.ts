@@ -106,6 +106,7 @@ export class UserService {
     if (!user) throw new InternalServerErrorException('user profile not found');
     const isFriend = !!user.Friends.find(friend => friend.userId === userId);
     const isBlocked = await this.isBlockedBy(userId, targetUserId);
+    const hasBlockedMe = await this.isBlockedBy(targetUserId, userId);
     const isOnline = WsSocketService.isOnline(user.userId);
     const status = WsSocketService.getUserStatus(targetUserId);
 
@@ -115,6 +116,7 @@ export class UserService {
       avatarUrl: user.avatarUrl,
       isOnline,
       isBlocked,
+      hasBlockedMe,
       isFriend,
       status,
     };

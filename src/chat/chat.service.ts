@@ -14,7 +14,6 @@ import {
   WsChatLeave,
   WsChatParticipationUpdate,
   WsChatUpdate,
-  WsChat_FromServer,
   WsNewDirectMessage,
   WsNewMessage,
 } from 'src/shared/WsEvents/chat';
@@ -93,17 +92,18 @@ export class ChatService {
         where: {userId},
         select: {userId: true, nickname: true, avatarUrl: true},
       });
-      this.handleWsChatEvent(
-        userId,
+      this.room.broadcastToAll(
         new WsChatUpdate.Dto({chat, updater: user, action: {newChat: true}}),
       );
-      this.handleWsChatEvent(
-        userId,
-        new WsChatJoin.Dto({
+      this.room.addUserToRoom({prefix: this.prefix, roomId: chat.chatId, userId});
+      this.room.broadcastMessageInRoom({
+        prefix: this.prefix,
+        roomId: chat.chatId,
+        ...new WsChatJoin.Dto({
           chat: {chatId: chat.chatId, chatName: chat.chatName},
           user,
         }),
-      );
+      });
       return chatOverview;
     } catch (err: any) {
       throw new ConflictException('chat name already taken');
@@ -129,9 +129,7 @@ export class ChatService {
           where: {chatId},
           data: {...filterDefinedProperties({...chatInfo, chatAvatarUrl})},
         });
-
-        this.handleWsChatEvent(
-          adminParticipation.userProfile.userId,
+        this.room.broadcastToAll(
           new WsChatUpdate.Dto({
             chat,
             updater: adminParticipation.userProfile,
@@ -178,13 +176,16 @@ export class ChatService {
       select: {userId: true, nickname: true, avatarUrl: true},
     });
     if (!user) throw new NotFoundException(`no such user`);
-    this.handleWsChatEvent(
-      userId,
-      new WsChatJoin.Dto({
+
+    this.room.addUserToRoom({prefix: this.prefix, roomId: chatId, userId});
+    this.room.broadcastMessageInRoom({
+      prefix: this.prefix,
+      roomId: chatId,
+      ...new WsChatJoin.Dto({
         chat: {chatId, chatName: chat.chatName},
         user,
       }),
-    );
+    });
   }
 
   async getAllDirectMessages(userId: number, correspondantId: number): Promise<DirectMessageInfo> {
@@ -251,8 +252,8 @@ export class ChatService {
       select: {messageId: true},
     });
     const message = {messageId, messageContent};
-    this.handleWsChatEvent(senderId, new WsNewDirectMessage.Dto({sender, message}));
-    this.handleWsChatEvent(userId, new WsNewDirectMessage.Dto({sender, message}));
+    this.room.sendMessageToUser(userId, new WsNewDirectMessage.Dto({sender, message}));
+    this.room.sendMessageToUser(senderId, new WsNewDirectMessage.Dto({sender, message}));
   }
 
   async getAllMessagesFromChatId(chatId: number): Promise<ChatMessage[]> {
@@ -398,7 +399,11 @@ export class ChatService {
       const chat = {chatId, chatName: participation.chat.chatName};
       const sender = {userId, nickname, avatarUrl};
       const message = {messageId, messageContent};
-      this.handleWsChatEvent(userId, new WsNewMessage.Dto({chat, sender, message}));
+      this.room.broadcastMessageInRoom({
+        prefix: this.prefix,
+        roomId: chatId,
+        ...new WsNewMessage.Dto({chat, sender, message}),
+      });
     } catch (err: any) {
       throw new WsException(err);
     }
@@ -415,13 +420,18 @@ export class ChatService {
         },
       });
       if (!participant) throw new NotFoundException(`no such participant`);
-      this.handleWsChatEvent(
-        userId,
-        new WsChatLeave.Dto({
+
+      const prefix = this.prefix;
+      const roomId = chatId;
+      this.room.broadcastMessageInRoom({
+        prefix,
+        roomId,
+        ...new WsChatLeave.Dto({
           chat: participant.chat,
           user: participant.userProfile,
         }),
-      );
+      });
+      this.room.removeUserFromRoom({prefix, roomId, userId});
     } catch (err: any) {
       throw new NotFoundException(`no such participant`);
     }
@@ -452,8 +462,7 @@ export class ChatService {
     if ('ban' in updateData) {
       if (updateData.ban == true) {
         await this.leaveChat({chatId, userId: participationToUpdate.userId});
-        this.handleWsChatEvent(
-          updaterUserId,
+        this.room.broadcastToAll(
           new WsChatParticipationUpdate.Dto({
             chat: participationToUpdate.chat,
             updater: updaterParticipation.userProfile,
@@ -474,8 +483,7 @@ export class ChatService {
     if ('kick' in updateData) {
       if (updateData.kick == false) throw new BadRequestException('kick must be true or undefined');
       await this.leaveChat({chatId, userId: participationToUpdate.userId});
-      this.handleWsChatEvent(
-        updaterUserId,
+      this.room.broadcastToAll(
         new WsChatParticipationUpdate.Dto({
           chat: participationToUpdate.chat,
           updater: updaterParticipation.userProfile,
@@ -495,8 +503,7 @@ export class ChatService {
       where: {chatId_userId: {chatId, userId}},
       data: {...updateData},
     });
-    this.handleWsChatEvent(
-      updaterUserId,
+    this.room.broadcastToAll(
       new WsChatParticipationUpdate.Dto({
         chat: participationToUpdate.chat,
         updater: updaterParticipation.userProfile,
@@ -510,21 +517,6 @@ export class ChatService {
         },
       }),
     );
-  }
-
-  handleWsChatEvent(userId: number, eventDto: WsChat_FromServer.template): void {
-    if ('sender' in eventDto.message) {
-      return this.room.sendMessageToUser(userId, eventDto);
-    }
-
-    const prefix = this.prefix;
-    const roomId = eventDto.message.chat.chatId;
-    if (eventDto instanceof WsChat_FromServer.chatJoin.Dto)
-      this.room.addUserToRoom({prefix, roomId, userId});
-    if (eventDto instanceof WsChat_FromServer.chatUpdate.Dto) this.room.broadcastToAll(eventDto);
-    else this.room.broadcastMessageInRoom({prefix, roomId, ...eventDto});
-    if (eventDto instanceof WsChat_FromServer.chatLeave.Dto)
-      this.room.removeUserFromRoom({prefix, roomId, userId});
   }
 
   async handleUserConnection(userId: number): Promise<void> {
