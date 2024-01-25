@@ -18,6 +18,7 @@ import {
   HttpGameUpdateInCreation,
   HttpGetGameInCreation,
   HttpGetMatchMakingInfo,
+  HttpGetMatchHistory,
 } from 'src/shared/HttpEndpoints/game';
 import {GameService} from './game.service';
 import {GetInfoFromJwt} from 'src/decorator';
@@ -71,5 +72,13 @@ export class GameController {
   ): HttpGetGameInCreation.resTemplate {
     const gameInCreation = this.game.getGameInCreation(userId, gameInCreationId);
     return {gameInCreation};
+  }
+
+  @Get(HttpGetMatchHistory.endPoint)
+  async getMatchHistory(
+    @Param('userId', ParseIntPipe) targetUserId: number,
+  ): Promise<HttpGetMatchHistory.resTemplate> {
+    const plays = await this.game.getMatchHistory(targetUserId);
+    return {plays};
   }
 }

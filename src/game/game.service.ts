@@ -1,23 +1,38 @@
 import {ConflictException, ForbiddenException, Injectable, NotFoundException} from '@nestjs/common';
 import {UpdateGameInCreationDto} from './dto/updateGameInCreation.dto';
-import {GameInCreationData, GameMatchMakingInfo} from 'src/shared/HttpEndpoints/interfaces';
+import {
+  GameHistory,
+  GameInCreationData,
+  GameMatchMakingInfo,
+} from 'src/shared/HttpEndpoints/interfaces';
 import {PrismaService} from 'src/prisma/prisma.service';
 import {Game} from './gameLogic/game';
 import {GameCreator} from './gameLogic';
 import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
 import {RoomNamePrefix} from 'src/webSocket/WsRoom/interface';
+import {SendPlayerMoveDto} from './dto/sendPlayerMove.dto';
+import {WsException} from '@nestjs/websockets';
+import {WsSocketService} from 'src/webSocket/WsSocket/WsSocket.service';
 
 @Injectable()
 export class GameService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly room: WsRoomService,
-  ) {}
   private static readonly roomGameInCreationPrefix: RoomNamePrefix = 'Game_In_Creation-';
   private static readonly roomGameNamePrefix: RoomNamePrefix = 'Game-';
   private static waitingUser = new Set<number>();
   private static gameInCreation = new Map<number, GameCreator>();
   private static gameInProgress = new Map<number, Game>();
+  constructor(private readonly prisma: PrismaService, private readonly room: WsRoomService) {
+    setInterval(() => {
+      for (const game of GameService.gameInProgress.values()) {
+        if (game.isGameFinished()) {
+          const gameId = game.getGameId();
+          const prefix = GameService.roomGameNamePrefix;
+          this.room.deleteRoom({prefix, roomId: gameId});
+          GameService.gameInProgress.delete(gameId);
+        }
+      }
+    }, 1000);
+  }
 
   joinWaitList(userId: number): void {
     if (GameService.waitingUser.has(userId)) throw new ConflictException('already in waiting list');
@@ -94,19 +109,9 @@ export class GameService {
     if (gameInCreation.getHasMatched()) {
       let prefix = GameService.roomGameInCreationPrefix;
       this.room.deleteRoom({prefix, roomId: gameInCreationId});
-
-      prefix = GameService.roomGameNamePrefix;
-      const game = await gameInCreation.generateGame(this.prisma);
+      const game = await gameInCreation.generateGame(this.prisma, this.room);
       const gameId = game.getGameId();
       GameService.gameInProgress.set(gameId, game);
-      this.room.addUserToRoom({prefix, roomId: gameId, userId: game.getPlayerOneId()});
-      this.room.addUserToRoom({prefix, roomId: gameId, userId: game.getPlayerTwoId()});
-      this.room.broadcastMessageInRoom({
-        eventName: 'gameStart',
-        prefix,
-        roomId: gameId,
-        message: {gameId},
-      });
       GameService.gameInCreation.delete(gameInCreationId);
     } else {
       const prefix = GameService.roomGameInCreationPrefix;
@@ -129,7 +134,7 @@ export class GameService {
   getMatchMakingInfo(userId: number): GameMatchMakingInfo {
     if (GameService.waitingUser.has(userId)) return {status: 'WAITING_FOR_PLAYER'};
     for (const game of GameService.gameInProgress.values()) {
-      if (!game.isPlayerInGame(userId)) continue;
+      if (game.isGameFinished() || !game.isPlayerInGame(userId)) continue;
       return {
         status: 'IN_GAME',
         gameId: game.getGameId(),
@@ -176,10 +181,11 @@ export class GameService {
       return;
     }
     for (const game of GameService.gameInProgress.values()) {
-      if (!game.isPlayerInGame(userId)) continue;
+      if (game.isGameFinished() || !game.isPlayerInGame(userId)) continue;
       const gameId = game.getGameId();
       const prefix = GameService.roomGameNamePrefix;
       this.room.addUserToRoom({prefix, roomId: gameId, userId});
+      game.reconnect(userId);
       return;
     }
   }
@@ -194,11 +200,79 @@ export class GameService {
     }
 
     for (const game of GameService.gameInProgress.values()) {
-      if (!game.isPlayerInGame(userId)) continue;
+      if (game.isGameFinished() || !game.isPlayerInGame(userId)) continue;
       const gameId = game.getGameId();
       const prefix = GameService.roomGameNamePrefix;
       this.room.removeUserFromRoom({prefix, roomId: gameId, userId});
+      game.waitForReconnect(userId);
       return;
     }
+  }
+
+  handlePlayerMove(userId: number, dto: SendPlayerMoveDto): void {
+    const game = GameService.gameInProgress.get(dto.gameId);
+    if (!game) throw new WsException('game not found');
+    if (!game.isPlayerInGame(userId)) throw new WsException('user not in game');
+    game.updatePlayerPaddlePos(userId, dto.direction);
+  }
+
+  async getMatchHistory(userId: number): Promise<GameHistory[]> {
+    const plays = await this.prisma.game.findMany({
+      where: {participants: {some: {userId}}},
+      select: {
+        gameId: true,
+        gameStatus: true,
+        scoreToWin: true,
+        ballSpeed: true,
+        ballSize: true,
+        paddleSpeed: true,
+        paddleSize: true,
+        startedAt: true,
+        finishedAt: true,
+        participants: {
+          select: {
+            score: true,
+            isWinner: true,
+            userProfile: {select: {nickname: true, avatarUrl: true, userId: true}},
+          },
+        },
+      },
+    });
+    return plays.map(play => {
+      const p1Particip = play.participants[0];
+      const p2Particip = play.participants[1];
+      const playerOne = {
+        profile: {
+          ...p1Particip.userProfile,
+          isOnline: WsSocketService.isOnline(p1Particip.userProfile.userId),
+        },
+        score: p1Particip.score,
+      };
+      const playerTwo = {
+        profile: {
+          ...p2Particip.userProfile,
+          isOnline: WsSocketService.isOnline(p2Particip.userProfile.userId),
+        },
+        score: p2Particip.score,
+      };
+      const winnerId = play.participants.find(particip => particip.isWinner)?.userProfile.userId;
+
+      return {
+        gameId: play.gameId,
+        winnerId,
+        startDate: play.startedAt,
+        endDate: play.finishedAt ?? undefined,
+        playerOne,
+        playerTwo,
+        winner: play.participants.find(particip => particip.isWinner)?.userProfile,
+        rules: {
+          scoreToWin: play.scoreToWin,
+          ballSpeed: play.ballSpeed,
+          ballSize: play.ballSize,
+          paddleSpeed: play.paddleSpeed,
+          paddleSize: play.paddleSize,
+        },
+      };
+    });
   }
 }

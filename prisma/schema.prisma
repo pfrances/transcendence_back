@@ -182,10 +182,16 @@ model GameParticipation {
 model Game {
   gameId Int @id @default(autoincrement())
 
-  scoreToWin Int        @default(3)
   gameStatus GameStatus @default(IN_PROGRESS)
-  
+
   participants GameParticipation[]
+  scoreToWin   Int                 @default(3)
+  ballSpeed    BallSpeed
+  ballSize     BallSize
+  paddleSpeed  PaddleSpeed
+  paddleSize   PaddleSize
+  startedAt    DateTime            @default(now())
+  finishedAt   DateTime?
 
   @@map("Games")
 }
@@ -194,4 +200,34 @@ enum GameStatus {
   IN_PROGRESS
   FINISHED
   CANCELED
+}
+
+enum BallSpeed {
+  SLOW
+  NORMAL
+  FAST
+  VERY_FAST
+}
+
+enum BallSize {
+  VERY_SMALL
+  SMALL
+  NORMAL
+  BIG
+  VERY_BIG
+}
+
+enum PaddleSpeed {
+  SLOW
+  NORMAL
+  FAST
+  VERY_FAST
+}
+
+enum PaddleSize {
+  VERY_SMALL
+  SMALL
+  NORMAL
+  BIG
+  VERY_BIG
 }
