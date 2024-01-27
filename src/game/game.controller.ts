@@ -19,6 +19,7 @@ import {
   HttpGetGameInCreation,
   HttpGetMatchMakingInfo,
   HttpGetMatchHistory,
+  HttpGetGame,
 } from 'src/shared/HttpEndpoints/game';
 import {GameService} from './game.service';
 import {GetInfoFromJwt} from 'src/decorator';
@@ -35,8 +36,10 @@ export class GameController {
   }
 
   @Delete(HttpLeaveGame.endPoint)
-  leaveGame(@GetInfoFromJwt('userId') userId: number): HttpGameJoinWaitList.resTemplate {
-    this.game.leaveGame(userId);
+  async leaveGame(
+    @GetInfoFromJwt('userId') userId: number,
+  ): Promise<HttpGameJoinWaitList.resTemplate> {
+    await this.game.leaveGame(userId);
     return {};
   }
 
@@ -51,12 +54,12 @@ export class GameController {
   }
 
   @Patch(HttpGameAcceptInCreation.endPoint)
-  acceptInCreation(
+  async acceptInCreation(
     @GetInfoFromJwt('userId') userId: number,
     @Param('gameInCreationId', ParseIntPipe) gameInCreationId: number,
     @Body() dto: AcceptGameInCreationDto,
-  ): HttpGameAcceptInCreation.resTemplate {
-    this.game.acceptGameInCreation(userId, gameInCreationId, dto.hasAccepted);
+  ): Promise<HttpGameAcceptInCreation.resTemplate> {
+    await this.game.acceptGameInCreation(userId, gameInCreationId, dto.hasAccepted);
     return {};
   }
 
@@ -80,5 +83,10 @@ export class GameController {
   ): Promise<HttpGetMatchHistory.resTemplate> {
     const plays = await this.game.getMatchHistory(targetUserId);
     return {plays};
+  }
+
+  @Get(HttpGetGame.endPoint)
+  async getGame(@Param('gameId', ParseIntPipe) gameId: number): Promise<HttpGetGame.resTemplate> {
+    return await this.game.getGame(gameId);
   }
 }

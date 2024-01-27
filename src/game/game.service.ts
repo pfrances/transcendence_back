@@ -13,6 +13,7 @@ import {RoomNamePrefix} from 'src/webSocket/WsRoom/interface';
 import {SendPlayerMoveDto} from './dto/sendPlayerMove.dto';
 import {WsException} from '@nestjs/websockets';
 import {WsSocketService} from 'src/webSocket/WsSocket/WsSocket.service';
+import {HttpGetGame} from 'src/shared/HttpEndpoints/game';
 
 @Injectable()
 export class GameService {
@@ -40,7 +41,7 @@ export class GameService {
     if (GameService.waitingUser.size >= 2) this.newGameInCreation();
   }
 
-  leaveGame(userId: number): void {
+  async leaveGame(userId: number): Promise<void> {
     if (GameService.waitingUser.has(userId)) {
       GameService.waitingUser.delete(userId);
       return;
@@ -56,8 +57,8 @@ export class GameService {
         senderId: userId,
         message: {userId, gameId},
       });
+      await game.cancelGame();
       this.room.deleteRoom({prefix, roomId: gameId});
-      game.cancelGame();
       GameService.gameInProgress.delete(gameId);
       return;
     }
@@ -185,7 +186,7 @@ export class GameService {
       const gameId = game.getGameId();
       const prefix = GameService.roomGameNamePrefix;
       this.room.addUserToRoom({prefix, roomId: gameId, userId});
-      game.reconnect(userId);
+      game.handleUserReconnection(userId);
       return;
     }
   }
@@ -204,7 +205,7 @@ export class GameService {
       const gameId = game.getGameId();
       const prefix = GameService.roomGameNamePrefix;
       this.room.removeUserFromRoom({prefix, roomId: gameId, userId});
-      game.waitForReconnect(userId);
+      game.handleUserDisconnection(userId);
       return;
     }
   }
@@ -241,14 +242,14 @@ export class GameService {
     return plays.map(play => {
       const p1Particip = play.participants[0];
       const p2Particip = play.participants[1];
-      const playerOne = {
+      const player1 = {
         profile: {
           ...p1Particip.userProfile,
           isOnline: WsSocketService.isOnline(p1Particip.userProfile.userId),
         },
         score: p1Particip.score,
       };
-      const playerTwo = {
+      const player2 = {
         profile: {
           ...p2Particip.userProfile,
           isOnline: WsSocketService.isOnline(p2Particip.userProfile.userId),
@@ -262,8 +263,8 @@ export class GameService {
         winnerId,
         startDate: play.startedAt,
         endDate: play.finishedAt ?? undefined,
-        playerOne,
-        playerTwo,
+        player1,
+        player2,
         winner: play.participants.find(particip => particip.isWinner)?.userProfile,
         rules: {
           scoreToWin: play.scoreToWin,
@@ -274,5 +275,64 @@ export class GameService {
         },
       };
     });
+  }
+
+  async getGame(gameId: number): Promise<HttpGetGame.resTemplate> {
+    const game = await this.prisma.game.findUnique({
+      where: {gameId},
+      select: {
+        gameId: true,
+        gameStatus: true,
+        scoreToWin: true,
+        ballSpeed: true,
+        ballSize: true,
+        paddleSpeed: true,
+        paddleSize: true,
+        startedAt: true,
+        finishedAt: true,
+        participants: {
+          select: {
+            score: true,
+            isWinner: true,
+            userProfile: {select: {nickname: true, avatarUrl: true, userId: true}},
+          },
+        },
+      },
+    });
+    if (!game) throw new NotFoundException('game not found');
+    const p1Particip = game.participants[0];
+    const p2Particip = game.participants[1];
+    const player1 = {
+      profile: {
+        ...p1Particip.userProfile,
+        isOnline: WsSocketService.isOnline(p1Particip.userProfile.userId),
+      },
+      score: p1Particip.score,
+    };
+    const player2 = {
+      profile: {
+        ...p2Particip.userProfile,
+        isOnline: WsSocketService.isOnline(p2Particip.userProfile.userId),
+      },
+      score: p2Particip.score,
+    };
+    const winnerId = game.participants.find(particip => particip.isWinner)?.userProfile.userId;
+
+    return {
+      gameId: game.gameId,
+      winnerId,
+      startedAt: game.startedAt,
+      endedAt: game.finishedAt ?? undefined,
+      player1,
+      player2,
+      status: game.gameStatus,
+      rules: {
+        scoreToWin: game.scoreToWin,
+        ballSpeed: game.ballSpeed,
+        ballSize: game.ballSize,
+        paddleSpeed: game.paddleSpeed,
+        paddleSize: game.paddleSize,
+      },
+    };
   }
 }

@@ -15,10 +15,7 @@ import {JwtService} from 'src/jwt/jwt.service';
 export class SocketMonitorGateway
   implements OnGatewayInit, OnGatewayDisconnect, OnGatewayConnection
 {
-  constructor(
-    private readonly connection: WsConnectionService,
-    private readonly jwt: JwtService,
-  ) {}
+  constructor(private readonly connection: WsConnectionService, private readonly jwt: JwtService) {}
 
   @WebSocketServer() server: Server = {} as Server;
 

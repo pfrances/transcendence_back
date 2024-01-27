@@ -1,4 +1,4 @@
-import {ForbiddenException} from '@nestjs/common';
+import {WsException} from '@nestjs/websockets';
 import {PrismaService} from 'src/prisma/prisma.service';
 import {
   GameInProgressPlayerData,
@@ -12,10 +12,12 @@ import {
 } from 'src/shared/HttpEndpoints/interfaces';
 import {WsGameStateUpdatePosition} from 'src/shared/WsEvents/game';
 import {WsRoomService} from 'src/webSocket/WsRoom/WsRoom.service';
+import {WsSocketService} from 'src/webSocket/WsSocket/WsSocket.service';
 
 type PlayerData = GameInProgressPlayerData & {isDisconnected: boolean};
 type Ball = {x: number; y: number; dx: number; dy: number; radiusX: number; radiusY: number};
 
+const prefix = 'Game-';
 const ratio = 4 / 3;
 const xMax = 1 * ratio;
 const yMax = 1;
@@ -28,84 +30,78 @@ export class Game {
   private readonly gameId: number;
 
   private status: Omit<GameStatus, 'IN_CREATION'>;
-  private playerOne: PlayerData;
-  private playerTwo: PlayerData;
+  private player1: PlayerData;
+  private player2: PlayerData;
   private ball: Ball;
   private paddleHeight: number;
   private paddleWidth: number;
   private paddleSpeed: number;
 
-  private sendDataInterval?: NodeJS.Timeout;
-  private cancelGameTimeout?: NodeJS.Timeout;
+  private sendDataInterval: NodeJS.Timeout;
+
   private waitBeforeResetBallTimeout?: NodeJS.Timeout;
-  private timeToResetBall?: number;
+  private timeToResetBall: number;
+
   private accelerationInterval?: NodeJS.Timeout;
+
+  private cancelGameTimeout?: NodeJS.Timeout;
 
   constructor(
     prisma: PrismaService,
     room: WsRoomService,
     gameId: number,
     rules: GameRules,
-    playerOneId: number,
-    playerTwoId: number,
+    player1Id: number,
+    player2Id: number,
   ) {
     this.gameId = gameId;
-    this.status = 'IN_PROGRESS';
     this.rules = rules;
-    this.playerOne = this.initPlayerData(playerOneId);
-    this.playerTwo = this.initPlayerData(playerTwoId);
-    this.ball = {
-      x: centerPos('x'),
-      y: centerPos('y'),
-      dx: 0,
-      dy: 0,
-      radiusX: ballSizeToNumber(rules.ballSize) * ratio,
-      radiusY: ballSizeToNumber(rules.ballSize),
-    };
-    this.resetBall();
-    this.prisma = prisma;
-    this.room = room;
-    const prefix = 'Game-';
-    this.room.addUserToRoom({prefix, roomId: gameId, userId: playerOneId});
-    this.room.addUserToRoom({prefix, roomId: gameId, userId: playerTwoId});
-    this.room.broadcastMessageInRoom({
-      eventName: 'gameStart',
-      prefix,
-      roomId: gameId,
-      message: {gameId},
-    });
+    this.status = 'IN_PROGRESS';
+    this.player1 = this.initPlayerData(player1Id);
+    this.player2 = this.initPlayerData(player2Id);
+    this.ball = this.initBallData();
     this.paddleHeight = paddleHeightToNumber(rules.paddleSize);
     this.paddleWidth = paddleWidthToNumber(rules.paddleSize) * ratio;
     this.paddleSpeed = paddleSpeedToNumber(rules.paddleSpeed);
-    this.sendDataInterval = setInterval(() => {
-      let countdown: number | undefined = undefined;
-      if (this.status === 'IN_PROGRESS') {
-        if (this.waitBeforeResetBallTimeout && this.timeToResetBall)
-          countdown = Math.ceil(this.timeToResetBall - Date.now());
-        else this.updateBallPosition();
-      }
-      this.room.broadcastMessageInRoom({
-        eventName: 'gameStateUpdate',
-        prefix,
-        roomId: gameId,
-        message: {...this.getGameData(), countdown},
-      });
-      if (this.status === 'FINISHED' || this.status === 'CANCELED')
-        clearInterval(this.sendDataInterval);
-    }, 1000 / 60);
+    this.timeToResetBall = 0;
+    this.prisma = prisma;
+    this.room = room;
+    this.room.addUserToRoom({prefix, roomId: gameId, userId: player1Id});
+    this.room.addUserToRoom({prefix, roomId: gameId, userId: player2Id});
+    this.resetBall();
+    this.room.broadcastMessageInRoom({
+      eventName: 'gameStart',
+      prefix,
+      roomId: this.gameId,
+      message: {gameId: this.gameId},
+    });
+    this.sendDataInterval = setInterval(() => this.broadcastGameData(), 1000 / 60);
+  }
+
+  private broadcastGameData(): void {
+    this.updateBallPosition();
+    const countdown = Math.floor(this.timeToResetBall - Date.now());
+    const message = {...this.getGameData(), countdown: countdown > 0 ? countdown : undefined};
+    this.room.broadcastMessageInRoom({
+      eventName: 'gameStateUpdate',
+      prefix,
+      roomId: this.gameId,
+      message,
+    });
+    if (this.isGameFinished()) clearInterval(this.sendDataInterval);
   }
 
   public updatePlayerPaddlePos(userId: number, dir: 'up' | 'down'): void {
-    if (this.waitBeforeResetBallTimeout) return;
+    if (this.status !== 'IN_PROGRESS') return;
     const move = dir === 'up' ? -this.paddleSpeed : this.paddleSpeed;
     const paddleHalfHeight = this.paddleHeight / 2;
     const player =
-      this.playerOne.userId === userId
-        ? this.playerOne
-        : this.playerTwo.userId === userId
-        ? this.playerTwo
+      this.player1.userId === userId
+        ? this.player1
+        : this.player2.userId === userId
+        ? this.player2
         : null;
-    if (!player) throw new ForbiddenException('user not in game');
+    if (!player) throw new WsException('user not in game');
     if (player.paddlePos + move - paddleHalfHeight < 0) player.paddlePos = paddleHalfHeight;
     else if (player.paddlePos + move + paddleHalfHeight > yMax)
       player.paddlePos = yMax - paddleHalfHeight;
@@ -118,20 +114,20 @@ export class Game {
     const tolerance = this.ball.radiusY;
     if (
       this.ball.x - this.ball.radiusX <= this.paddleWidth &&
-      this.ball.y - this.ball.radiusY + tolerance >= this.playerOne.paddlePos - paddleHalfHeight &&
-      this.ball.y + this.ball.radiusY - tolerance <= this.playerOne.paddlePos + paddleHalfHeight
+      this.ball.y + this.ball.radiusY >= this.player1.paddlePos - paddleHalfHeight - tolerance &&
+      this.ball.y - this.ball.radiusY <= this.player1.paddlePos + paddleHalfHeight + tolerance
     ) {
-      const impact = (this.ball.y - this.playerOne.paddlePos) / this.paddleHeight;
+      const impact = (this.ball.y - this.player1.paddlePos) / this.paddleHeight;
       this.calculateBallBounce(impact);
       this.ball.x = this.paddleWidth + this.ball.radiusX;
       return true;
     }
     if (
       this.ball.x + this.ball.radiusX >= xMax - this.paddleWidth &&
-      this.ball.y - this.ball.radiusY + tolerance >= this.playerTwo.paddlePos - paddleHalfHeight &&
-      this.ball.y + this.ball.radiusY - tolerance <= this.playerTwo.paddlePos + paddleHalfHeight
+      this.ball.y + this.ball.radiusY >= this.player2.paddlePos - paddleHalfHeight - tolerance &&
+      this.ball.y - this.ball.radiusY <= this.player2.paddlePos + paddleHalfHeight + tolerance
     ) {
-      const impact = (this.ball.y - this.playerTwo.paddlePos) / this.paddleHeight;
+      const impact = (this.ball.y - this.player2.paddlePos) / paddleHalfHeight;
       this.calculateBallBounce(impact);
       this.ball.x = xMax - this.paddleWidth - this.ball.radiusX;
       return true;
@@ -148,13 +144,15 @@ export class Game {
 
     const bounceAngle = impact * maxBounceAngle;
     let newAngle = bounceAngle + Math.PI - angle;
-    const angleMin = Math.PI / 12;
+    if (newAngle < 0) newAngle += 2 * Math.PI;
 
-    if (newAngle > -Math.PI / 2 - angleMin && newAngle < -Math.PI / 2 + angleMin) {
-      newAngle =
-        Math.abs(newAngle) < Math.PI / 2 ? -Math.PI / 2 + angleMin : -Math.PI / 2 - angleMin;
-    } else if (newAngle > Math.PI / 2 - angleMin && newAngle < Math.PI / 2 + angleMin) {
-      newAngle = Math.abs(newAngle) < Math.PI / 2 ? Math.PI / 2 - angleMin : Math.PI / 2 + angleMin;
+    const angleMin = Math.PI / 8;
+    const halfPI = Math.PI / 2;
+    const threeHalfPI = (3 * Math.PI) / 2;
+    if (newAngle > halfPI - angleMin && newAngle < halfPI + angleMin) {
+      newAngle = newAngle < halfPI ? halfPI - angleMin : halfPI + angleMin;
+    } else if (newAngle > threeHalfPI - angleMin && newAngle < threeHalfPI + angleMin) {
+      newAngle = newAngle < threeHalfPI ? threeHalfPI - angleMin : threeHalfPI + angleMin;
     }
 
     this.ball.dx = (speed * Math.cos(newAngle)) / ratio;
@@ -162,6 +160,8 @@ export class Game {
   }
 
   private updateBallPosition(): void {
+    if (this.status !== 'IN_PROGRESS' || this.timeToResetBall > Date.now()) return;
+
     this.ball.x += this.ball.dx;
     this.ball.y += this.ball.dy;
 
@@ -178,18 +178,18 @@ export class Game {
     let hasScored = false;
     if (this.ball.x - this.ball.radiusX <= 0) {
       this.ball.x = this.ball.radiusX;
-      this.playerTwo.score++;
+      this.player2.score++;
       hasScored = true;
     } else if (this.ball.x + this.ball.radiusX >= xMax) {
       this.ball.x = xMax - this.ball.radiusX;
-      this.playerOne.score++;
+      this.player1.score++;
       hasScored = true;
     }
     if (hasScored) {
       clearInterval(this.accelerationInterval);
       if (
-        this.playerOne.score >= this.rules.scoreToWin ||
-        this.playerTwo.score >= this.rules.scoreToWin
+        this.player1.score >= this.rules.scoreToWin ||
+        this.player2.score >= this.rules.scoreToWin
       ) {
         this.endGame('FINISHED');
       } else this.resetBall();
@@ -215,40 +215,43 @@ export class Game {
     this.timeToResetBall = Date.now() + 3000;
   }
 
-  public waitForReconnect(userId: number): void {
-    if (this.playerOne.userId === userId) this.playerOne.isDisconnected = true;
-    else if (this.playerTwo.userId === userId) this.playerTwo.isDisconnected = true;
-    else throw new ForbiddenException('user not in game');
+  public handleUserDisconnection(userId: number): void {
+    if (this.isGameFinished()) return;
+    if (this.player1.userId === userId) this.player1.isDisconnected = true;
+    else if (this.player2.userId === userId) this.player2.isDisconnected = true;
+    else throw new WsException('user not in game');
     this.status = 'PAUSED';
-    this.cancelGameTimeout = setTimeout(() => this.cancelGame(), 10000);
+    if (this.player1.isDisconnected && this.player2.isDisconnected)
+      this.cancelGameTimeout = setTimeout(() => this.cancelGame(), 30000);
   }
 
-  public reconnect(userId: number): void {
-    if (this.playerOne.userId === userId) this.playerOne.isDisconnected = false;
-    else if (this.playerTwo.userId === userId) this.playerTwo.isDisconnected = false;
-    else throw new ForbiddenException('user not in game');
-    if (!this.playerOne.isDisconnected && !this.playerTwo.isDisconnected) {
+  public handleUserReconnection(userId: number): void {
+    if (this.isGameFinished()) return;
+    if (this.player1.userId === userId) this.player1.isDisconnected = false;
+    else if (this.player2.userId === userId) this.player2.isDisconnected = false;
+    else throw new WsException('user not in game');
+    if (!this.player1.isDisconnected && !this.player2.isDisconnected) {
       this.status = 'IN_PROGRESS';
-      clearTimeout(this.cancelGameTimeout);
+      this.timeToResetBall = Date.now() + 3000;
+      if (this.cancelGameTimeout) {
+        clearTimeout(this.cancelGameTimeout);
+        this.cancelGameTimeout = undefined;
+      }
     }
   }
 
   public getGameData(): WsGameStateUpdatePosition.eventMessageTemplate {
     return {
-      gameId: this.gameId,
       status: this.status,
       player1: {
-        paddlePos: this.playerOne.paddlePos,
-        score: this.playerOne.score,
-        userId: this.playerOne.userId,
+        paddlePos: this.player1.paddlePos,
+        score: this.player1.score,
       },
       player2: {
-        paddlePos: this.playerTwo.paddlePos,
-        score: this.playerTwo.score,
-        userId: this.playerTwo.userId,
+        paddlePos: this.player2.paddlePos,
+        score: this.player2.score,
       },
       ball: {x: this.ball.x / ratio, y: this.ball.y},
-      rules: this.rules,
     };
   }
 
@@ -257,7 +260,18 @@ export class Game {
   }
 
   public isPlayerInGame(userId: number): boolean {
-    return this.playerOne.userId === userId || this.playerTwo.userId === userId;
+    return this.player1.userId === userId || this.player2.userId === userId;
+  }
+
+  private initBallData(): Ball {
+    return {
+      x: centerPos('x'),
+      y: centerPos('y'),
+      dx: 0,
+      dy: 0,
+      radiusX: ballSizeToNumber(this.rules.ballSize) * ratio,
+      radiusY: ballSizeToNumber(this.rules.ballSize),
+    };
   }
 
   private initPlayerData(playerId: number): PlayerData {
@@ -265,12 +279,14 @@ export class Game {
       userId: playerId,
       paddlePos: centerPos('y'),
       score: 0,
-      isDisconnected: false,
+      isDisconnected: WsSocketService.isOnline(playerId) == false,
     };
   }
 
   public async cancelGame(): Promise<void> {
+    if (this.isGameFinished()) return;
     await this.endGame('CANCELED');
+    this.broadcastGameData();
   }
 
   public isGameFinished(): boolean {
@@ -287,21 +303,21 @@ export class Game {
         participants: {
           update: [
             {
-              where: {gameId_userId: {gameId: this.gameId, userId: this.playerOne.userId}},
+              where: {gameId_userId: {gameId: this.gameId, userId: this.player1.userId}},
               data: {
-                score: this.playerOne.score,
+                score: this.player1.score,
                 isWinner:
-                  this.playerOne.score > this.playerTwo.score &&
-                  this.playerOne.score >= this.rules.scoreToWin,
+                  this.player1.score > this.player2.score &&
+                  this.player1.score >= this.rules.scoreToWin,
               },
             },
             {
-              where: {gameId_userId: {gameId: this.gameId, userId: this.playerTwo.userId}},
+              where: {gameId_userId: {gameId: this.gameId, userId: this.player2.userId}},
               data: {
-                score: this.playerTwo.score,
+                score: this.player2.score,
                 isWinner:
-                  this.playerTwo.score > this.playerOne.score &&
-                  this.playerTwo.score >= this.rules.scoreToWin,
+                  this.player2.score > this.player1.score &&
+                  this.player2.score >= this.rules.scoreToWin,
               },
             },
           ],

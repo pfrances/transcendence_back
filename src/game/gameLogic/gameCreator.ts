@@ -14,40 +14,40 @@ export class GameCreator {
   private rules: GameRules;
   private status: 'IN_CREATION' | 'IN_PROGRESS';
   private hasMatched: boolean;
-  private playerOne: GameInCreationPlayerData;
-  private playerTwo: GameInCreationPlayerData;
+  private player1: GameInCreationPlayerData;
+  private player2: GameInCreationPlayerData;
 
-  constructor(playerOneId: number, playerTwoId: number) {
+  constructor(player1Id: number, player2Id: number) {
     this.gameInCreationId = this.generateGameInCreationId();
     this.rules = this.initRules();
     this.status = 'IN_CREATION';
     this.hasMatched = false;
-    this.playerOne = this.initPlayerData(playerOneId);
-    this.playerTwo = this.initPlayerData(playerTwoId);
+    this.player1 = this.initPlayerData(player1Id);
+    this.player2 = this.initPlayerData(player2Id);
   }
 
   public acceptGame(userId: number, hasAccepted: boolean) {
-    if (this.playerOne.userId !== userId && this.playerTwo.userId !== userId)
+    if (this.player1.userId !== userId && this.player2.userId !== userId)
       throw new ForbiddenException('user not in game');
     if (this.status !== 'IN_CREATION') throw new ForbiddenException('game already started');
-    if (this.playerOne.hasAccepted && this.playerTwo.hasAccepted)
+    if (this.player1.hasAccepted && this.player2.hasAccepted)
       throw new ForbiddenException('game already accepted');
-    if (this.playerOne.userId === userId) this.playerOne.hasAccepted = hasAccepted;
-    else this.playerTwo.hasAccepted = hasAccepted;
-    if (this.playerOne.hasAccepted && this.playerTwo.hasAccepted) {
+    if (this.player1.userId === userId) this.player1.hasAccepted = hasAccepted;
+    else this.player2.hasAccepted = hasAccepted;
+    if (this.player1.hasAccepted && this.player2.hasAccepted) {
       this.hasMatched = true;
     }
   }
 
   public updateGame(userId: number, rules: GameRules): void {
-    if (this.playerOne.userId !== userId && this.playerTwo.userId !== userId)
+    if (this.player1.userId !== userId && this.player2.userId !== userId)
       throw new ForbiddenException('user not in game');
     if (this.status !== 'IN_CREATION') throw new ForbiddenException('game already started');
-    if (this.playerOne.hasAccepted && this.playerTwo.hasAccepted)
+    if (this.player1.hasAccepted && this.player2.hasAccepted)
       throw new ForbiddenException('game already accepted');
     this.rules = rules;
-    this.playerOne.hasAccepted = false;
-    this.playerTwo.hasAccepted = false;
+    this.player1.hasAccepted = false;
+    this.player2.hasAccepted = false;
   }
 
   public getHasMatched(): boolean {
@@ -63,7 +63,7 @@ export class GameCreator {
     if (this.status !== 'IN_CREATION') throw new Error('game already started');
     this.status = 'IN_PROGRESS';
     const gameId = await this.createGameInDb(prisma);
-    return new Game(prisma, room, gameId, this.rules, this.playerOne.userId, this.playerTwo.userId);
+    return new Game(prisma, room, gameId, this.rules, this.player1.userId, this.player2.userId);
   }
 
   private async createGameInDb(prisma: PrismaService): Promise<number> {
@@ -76,7 +76,7 @@ export class GameCreator {
         paddleSpeed: this.rules.paddleSpeed,
         paddleSize: this.rules.paddleSize,
         participants: {
-          create: [{userId: this.playerOne.userId}, {userId: this.playerTwo.userId}],
+          create: [{userId: this.player1.userId}, {userId: this.player2.userId}],
         },
       },
       select: {gameId: true},
@@ -102,7 +102,7 @@ export class GameCreator {
   }
 
   public isPlayerInGame(userId: number): boolean {
-    return this.playerOne.userId === userId || this.playerTwo.userId === userId;
+    return this.player1.userId === userId || this.player2.userId === userId;
   }
 
   private generateGameInCreationId(): number {
@@ -114,8 +114,8 @@ export class GameCreator {
       gameInCreationId: this.gameInCreationId,
       status: this.status,
       rules: this.rules,
-      playerOne: this.playerOne,
-      playerTwo: this.playerTwo,
+      player1: this.player1,
+      player2: this.player2,
     };
   }
 }
