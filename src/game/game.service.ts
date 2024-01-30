@@ -4,6 +4,7 @@ import {
   GameHistory,
   GameInCreationData,
   GameMatchMakingInfo,
+  GameStatus,
 } from 'src/shared/HttpEndpoints/interfaces';
 import {PrismaService} from 'src/prisma/prisma.service';
 import {Game} from './gameLogic/game';
@@ -132,13 +133,20 @@ export class GameService {
     return gameInCreation.getGameInCreationData();
   }
 
-  getMatchMakingInfo(userId: number): GameMatchMakingInfo {
-    if (GameService.waitingUser.has(userId)) return {status: 'WAITING_FOR_PLAYER'};
+  async getMatchMakingInfo(userId: number): Promise<GameMatchMakingInfo> {
+    const lastGame = await this.prisma.game.findFirst({
+      where: {participants: {some: {userId}}},
+      orderBy: {gameId: 'desc'},
+      select: {gameId: true},
+    });
+    const lastGameId = lastGame?.gameId ?? undefined;
+    if (GameService.waitingUser.has(userId)) return {status: 'WAITING_FOR_PLAYER', lastGameId};
     for (const game of GameService.gameInProgress.values()) {
       if (game.isGameFinished() || !game.isPlayerInGame(userId)) continue;
       return {
         status: 'IN_GAME',
         gameId: game.getGameId(),
+        lastGameId,
       };
     }
     for (const game of GameService.gameInCreation.values()) {
@@ -146,9 +154,10 @@ export class GameService {
       return {
         status: 'IN_GAME_CREATION',
         gameInCreationId: game.getGameInCreationId(),
+        lastGameId,
       };
     }
-    return {status: 'UNREGISTERED'};
+    return {status: 'UNREGISTERED', lastGameId};
   }
 
   private newGameInCreation(): void {
@@ -317,7 +326,8 @@ export class GameService {
       score: p2Particip.score,
     };
     const winnerId = game.participants.find(particip => particip.isWinner)?.userProfile.userId;
-
+    const gameInProgressStatus = GameService.gameInProgress.get(game.gameId)?.getGameStatus();
+    const status = (gameInProgressStatus ?? game.gameStatus) as GameStatus;
     return {
       gameId: game.gameId,
       winnerId,
@@ -325,7 +335,7 @@ export class GameService {
       endedAt: game.finishedAt ?? undefined,
       player1,
       player2,
-      status: game.gameStatus,
+      status,
       rules: {
         scoreToWin: game.scoreToWin,
         ballSpeed: game.ballSpeed,

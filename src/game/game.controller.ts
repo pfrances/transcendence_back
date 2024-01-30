@@ -64,8 +64,10 @@ export class GameController {
   }
 
   @Get(HttpGetMatchMakingInfo.endPoint)
-  getMatchMakingInfo(@GetInfoFromJwt('userId') userId: number): HttpGetMatchMakingInfo.resTemplate {
-    return this.game.getMatchMakingInfo(userId);
+  async getMatchMakingInfo(
+    @GetInfoFromJwt('userId') userId: number,
+  ): Promise<HttpGetMatchMakingInfo.resTemplate> {
+    return await this.game.getMatchMakingInfo(userId);
   }
 
   @Get(HttpGetGameInCreation.endPoint)

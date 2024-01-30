@@ -56,7 +56,6 @@ export class Game {
   ) {
     this.gameId = gameId;
     this.rules = rules;
-    this.status = 'IN_PROGRESS';
     this.player1 = this.initPlayerData(player1Id);
     this.player2 = this.initPlayerData(player2Id);
     this.ball = this.initBallData();
@@ -75,6 +74,8 @@ export class Game {
       roomId: this.gameId,
       message: {gameId: this.gameId},
     });
+    this.status =
+      this.player1.isDisconnected || this.player2.isDisconnected ? 'PAUSED' : 'IN_PROGRESS';
     this.sendDataInterval = setInterval(() => this.broadcastGameData(), 1000 / 60);
   }
 
@@ -324,5 +325,9 @@ export class Game {
         },
       },
     });
+  }
+
+  getGameStatus(): Omit<GameStatus, 'IN_CREATION'> {
+    return this.status;
   }
 }
