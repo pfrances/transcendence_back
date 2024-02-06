@@ -1,6 +1,7 @@
 import {WsException} from '@nestjs/websockets';
 import {PrismaService} from 'src/prisma/prisma.service';
 import {
+  Achievement,
   GameInProgressPlayerData,
   GameRules,
   GameStatus,
@@ -296,6 +297,10 @@ export class Game {
 
   private async endGame(status: 'FINISHED' | 'CANCELED'): Promise<void> {
     this.status = status;
+    if (status === 'FINISHED') {
+      await this.createGameAchievements(this.player1);
+      await this.createGameAchievements(this.player2);
+    }
     await this.prisma.game.update({
       where: {gameId: this.gameId},
       data: {
@@ -327,7 +332,55 @@ export class Game {
     });
   }
 
-  getGameStatus(): Omit<GameStatus, 'IN_CREATION'> {
+  public getGameStatus(): Omit<GameStatus, 'IN_CREATION'> {
     return this.status;
+  }
+
+  private async createGameAchievements(player: PlayerData): Promise<void> {
+    const now = new Date();
+    const achievements: Omit<Achievement, 'achievementId'>[] = [];
+    const userId = player.userId;
+
+    achievements.push({name: 'firstGame', obtainedAt: now});
+    if (player.score >= this.rules.scoreToWin)
+      achievements.push({name: 'firstWin', obtainedAt: now});
+    if (this.rules.scoreToWin >= 20) achievements.push({name: 'longGame', obtainedAt: now});
+    if (this.rules.scoreToWin <= 1) achievements.push({name: 'shortGame', obtainedAt: now});
+    if (this.rules.paddleSize === 'BIG' && this.rules.ballSize === 'SMALL')
+      achievements.push({name: 'largePaddleSmallBall', obtainedAt: now});
+    if (this.rules.paddleSize === 'SMALL' && this.rules.ballSize === 'BIG')
+      achievements.push({name: 'smallPaddleLargeBall', obtainedAt: now});
+    if (this.rules.paddleSpeed === 'FAST' && this.rules.ballSpeed === 'FAST')
+      achievements.push({name: 'speedUp', obtainedAt: now});
+    if (this.rules.paddleSpeed === 'SLOW' && this.rules.ballSpeed === 'SLOW')
+      achievements.push({name: 'speedDown', obtainedAt: now});
+    if (this.rules.paddleSpeed === 'SLOW' && this.rules.ballSpeed === 'FAST')
+      achievements.push({name: 'impossibleSpeed', obtainedAt: now});
+    if (
+      this.rules.paddleSize === 'SMALL' &&
+      this.rules.ballSize === 'SMALL' &&
+      this.rules.paddleSpeed === 'FAST' &&
+      this.rules.ballSpeed === 'SLOW'
+    )
+      achievements.push({name: 'impossible', obtainedAt: now});
+    const startTime = await this.prisma.game.findUnique({
+      where: {gameId: this.gameId},
+      select: {startedAt: true},
+    });
+    if (
+      startTime &&
+      new Date().getTime() - startTime.startedAt.getTime() < 30000 &&
+      player.score > this.rules.scoreToWin
+    )
+      achievements.push({name: 'quick', obtainedAt: now});
+    const unlockedAchievements = await this.prisma.achievement.findMany({
+      where: {userId, name: {in: achievements.map(achievement => achievement.name)}},
+    });
+
+    await this.prisma.achievement.createMany({
+      data: achievements
+        .filter(achievement => !unlockedAchievements.some(a => a.name === achievement.name))
+        .map(achievement => ({userId, ...achievement})),
+    });
   }
 }

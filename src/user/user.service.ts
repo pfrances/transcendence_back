@@ -39,7 +39,18 @@ export class UserService {
 
   async getAllUsersPublicInfo(): Promise<UserPublicProfile[]> {
     const users = await this.prisma.profile.findMany({
-      select: {userId: true, nickname: true, avatarUrl: true},
+      select: {
+        userId: true,
+        nickname: true,
+        avatarUrl: true,
+        achievements: {
+          select: {
+            achievementId: true,
+            name: true,
+            obtainedAt: true,
+          },
+        },
+      },
     });
     return users.map(user => ({...user, isOnline: WsSocketService.isOnline(user.userId)}));
   }
@@ -68,7 +79,20 @@ export class UserService {
         select: {
           email: true,
           hasSet2Fa: true,
-          profile: {select: {userId: true, nickname: true, avatarUrl: true}},
+          profile: {
+            select: {
+              userId: true,
+              nickname: true,
+              avatarUrl: true,
+              achievements: {
+                select: {
+                  achievementId: true,
+                  name: true,
+                  obtainedAt: true,
+                },
+              },
+            },
+          },
         },
         data: {
           ...userModelInfo,
@@ -101,10 +125,22 @@ export class UserService {
   ): Promise<UserPublicProfileRegardingMe> {
     const user = await this.prisma.profile.findUnique({
       where: {userId: targetUserId},
-      select: {userId: true, nickname: true, avatarUrl: true, Friends: {select: {userId: true}}},
+      select: {
+        userId: true,
+        nickname: true,
+        avatarUrl: true,
+        friends: {select: {userId: true}},
+        achievements: {
+          select: {
+            achievementId: true,
+            name: true,
+            obtainedAt: true,
+          },
+        },
+      },
     });
     if (!user) throw new InternalServerErrorException('user profile not found');
-    const isFriend = !!user.Friends.find(friend => friend.userId === userId);
+    const isFriend = !!user.friends.find(friend => friend.userId === userId);
     const isBlocked = await this.isBlockedBy(userId, targetUserId);
     const hasBlockedMe = await this.isBlockedBy(targetUserId, userId);
     const isOnline = WsSocketService.isOnline(user.userId);
@@ -114,6 +150,7 @@ export class UserService {
       userId: user.userId,
       nickname: user.nickname,
       avatarUrl: user.avatarUrl,
+      achievements: user.achievements,
       isOnline,
       isBlocked,
       hasBlockedMe,
@@ -127,14 +164,40 @@ export class UserService {
     if ('user42Id' in userInfo) {
       const user = await this.prisma.user.findUnique({
         where: {...userInfo},
-        select: {profile: {select: {userId: true, nickname: true, avatarUrl: true}}},
+        select: {
+          profile: {
+            select: {
+              userId: true,
+              nickname: true,
+              avatarUrl: true,
+              achievements: {
+                select: {
+                  achievementId: true,
+                  name: true,
+                  obtainedAt: true,
+                },
+              },
+            },
+          },
+        },
       });
       if (!user?.profile) throw new InternalServerErrorException('user profile not found');
       return {...user.profile, isOnline: WsSocketService.isOnline(user.profile.userId)};
     }
     const user = await this.prisma.profile.findUnique({
       where: {...userInfo},
-      select: {userId: true, nickname: true, avatarUrl: true},
+      select: {
+        userId: true,
+        nickname: true,
+        avatarUrl: true,
+        achievements: {
+          select: {
+            achievementId: true,
+            name: true,
+            obtainedAt: true,
+          },
+        },
+      },
     });
     if (!user) throw new InternalServerErrorException('user profile not found');
     return {...user, isOnline: WsSocketService.isOnline(user.userId)};
@@ -147,13 +210,26 @@ export class UserService {
         select: {
           email: true,
           hasSet2Fa: true,
-          profile: {select: {userId: true, nickname: true, avatarUrl: true}},
+          profile: {
+            select: {
+              userId: true,
+              nickname: true,
+              avatarUrl: true,
+              achievements: {
+                select: {
+                  achievementId: true,
+                  name: true,
+                  obtainedAt: true,
+                },
+              },
+            },
+          },
         },
       });
       if (!user?.profile) throw new InternalServerErrorException('user profile not found');
-      const {userId, nickname, avatarUrl} = user.profile;
+      const {userId, nickname, avatarUrl, achievements} = user.profile;
       const {email, hasSet2Fa} = user;
-      return {userId, nickname, avatarUrl, email, hasSet2Fa};
+      return {userId, nickname, avatarUrl, email, hasSet2Fa, achievements};
     }
     const user = await this.prisma.profile.findUnique({
       where: {...userInfo},
@@ -162,12 +238,19 @@ export class UserService {
         nickname: true,
         avatarUrl: true,
         user: {select: {email: true, hasSet2Fa: true}},
+        achievements: {
+          select: {
+            achievementId: true,
+            name: true,
+            obtainedAt: true,
+          },
+        },
       },
     });
     if (!user) throw new InternalServerErrorException('user profile not found');
     const {email, hasSet2Fa} = user.user;
-    const {userId, nickname, avatarUrl} = user;
-    return {userId, nickname, avatarUrl, email, hasSet2Fa};
+    const {userId, nickname, avatarUrl, achievements} = user;
+    return {userId, nickname, avatarUrl, email, hasSet2Fa, achievements};
   }
 
   async verifyUserCredential({nickname, password}: SignInDto): Promise<UserPrivateProfile> {
@@ -178,6 +261,13 @@ export class UserService {
         nickname: true,
         avatarUrl: true,
         user: {select: {email: true, password: true, hasSet2Fa: true}},
+        achievements: {
+          select: {
+            achievementId: true,
+            name: true,
+            obtainedAt: true,
+          },
+        },
       },
     });
     if (!profile) throw new UnauthorizedException('invalid credential');
@@ -203,6 +293,7 @@ export class UserService {
           nickname: true,
           avatarUrl: true,
           user: {select: {email: true, hasSet2Fa: true}},
+          achievements: true,
         },
       });
       if (!profile) throw new ForbiddenException('unable to create the user');

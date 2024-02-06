@@ -46,7 +46,8 @@ model Profile {
   user      User     @relation("profile", fields: [userId], references: [userId], onDelete: Cascade)
   nickname  String   @unique
   avatarUrl String?
-  Friends   Friend[] @relation("friendOf")
+  friends   Friend[] @relation("friendOf")
+  achievements Achievement[]
 
   gameParticipations GameParticipation[]
   chatParticipations ChatParticipation[]
@@ -230,4 +231,29 @@ enum PaddleSize {
   NORMAL
   BIG
   VERY_BIG
+}
+
+model Achievement {
+  achievementId Int @id @default(autoincrement())
+  name          AchievementName
+  obtainedAt    DateTime
+  
+  userId     Int
+  Profile       Profile @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@map("Achievements")
+}
+
+enum AchievementName {
+  firstGame
+  firstWin
+  longGame
+  shortGame
+  largePaddleSmallBall
+  smallPaddleLargeBall
+  speedUp
+  speedDown
+  impossibleSpeed
+  impossible
+  quick
 }
