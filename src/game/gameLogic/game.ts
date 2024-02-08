@@ -77,11 +77,11 @@ export class Game {
     });
     this.status =
       this.player1.isDisconnected || this.player2.isDisconnected ? 'PAUSED' : 'IN_PROGRESS';
-    this.sendDataInterval = setInterval(() => this.broadcastGameData(), 1000 / 60);
+    this.sendDataInterval = setInterval(async () => await this.broadcastGameData(), 1000 / 60);
   }
 
-  private broadcastGameData(): void {
-    this.updateBallPosition();
+  private async broadcastGameData(): Promise<void> {
+    await this.updateBallPosition();
     const countdown = Math.floor(this.timeToResetBall - Date.now());
     const message = {...this.getGameData(), countdown: countdown > 0 ? countdown : undefined};
     this.room.broadcastMessageInRoom({
@@ -161,7 +161,7 @@ export class Game {
     this.ball.dy = speed * Math.sin(newAngle);
   }
 
-  private updateBallPosition(): void {
+  private async updateBallPosition(): Promise<void> {
     if (this.status !== 'IN_PROGRESS' || this.timeToResetBall > Date.now()) return;
 
     this.ball.x += this.ball.dx;
@@ -193,7 +193,7 @@ export class Game {
         this.player1.score >= this.rules.scoreToWin ||
         this.player2.score >= this.rules.scoreToWin
       ) {
-        this.endGame('FINISHED');
+        await this.endGame('FINISHED');
       } else this.resetBall();
     }
   }
