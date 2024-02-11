@@ -11,13 +11,13 @@ export class UpdateGameInCreationDto {
   @IsIn(['SLOW', 'NORMAL', 'FAST', 'VERY_FAST'])
   ballSpeed: BallSpeed;
 
-  @IsIn(['SMALL', 'NORMAL', 'BIG', 'VERY_BIG'])
+  @IsIn(['VERY_SMALL', 'SMALL', 'NORMAL', 'BIG', 'VERY_BIG'])
   ballSize: BallSize;
 
   @IsIn(['SLOW', 'NORMAL', 'FAST', 'VERY_FAST'])
   paddleSpeed: PaddleSpeed;
 
-  @IsIn(['SMALL', 'NORMAL', 'BIG', 'VERY_BIG'])
+  @IsIn(['VERY_SMALL', 'SMALL', 'NORMAL', 'BIG', 'VERY_BIG'])
   paddleSize: PaddleSize;
 
   constructor(req: HttpGameUpdateInCreation.reqTemplate) {

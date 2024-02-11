@@ -1,3 +1,3 @@
-npx prisma migrate dev --name 'init'
-npx prisma studio dev &
+npx prisma migrate deploy
+npx prisma studio &
 node dist/main
