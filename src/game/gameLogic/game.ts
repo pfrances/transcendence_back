@@ -119,7 +119,7 @@ export class Game {
       this.ball.y + this.ball.radiusY >= this.player1.paddlePos - paddleHalfHeight - tolerance &&
       this.ball.y - this.ball.radiusY <= this.player1.paddlePos + paddleHalfHeight + tolerance
     ) {
-      const impact = (this.ball.y - this.player1.paddlePos) / this.paddleHeight;
+      const impact = (this.ball.y - this.player1.paddlePos) / paddleHalfHeight;
       this.calculateBallBounce(impact);
       this.ball.x = this.paddleWidth + this.ball.radiusX;
       return true;

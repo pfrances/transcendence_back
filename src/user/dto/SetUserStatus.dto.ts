@@ -5,7 +5,7 @@ import {WsSetUserStatus} from 'src/shared/WsEvents/user';
 export class SetUserStatusDto {
   @IsNotEmpty()
   @IsString()
-  @IsIn(['waitingForGame', 'onGame', 'onChat', 'chilling'])
+  @IsIn(['waitingForGame', 'onGame', 'lookingForChat', 'onChat', 'chilling'])
   status: UserStatusType;
 
   constructor(data: WsSetUserStatus.eventMessageTemplate) {

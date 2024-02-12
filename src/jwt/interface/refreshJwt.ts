@@ -1,4 +1,6 @@
+import {JwtData} from '../../shared/HttpEndpoints/types';
+
 export interface RefreshJwt {
-  authToken: string;
-  refreshToken: string;
+  authToken: JwtData;
+  refreshToken: JwtData;
 }

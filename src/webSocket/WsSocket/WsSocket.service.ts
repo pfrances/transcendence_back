@@ -51,6 +51,7 @@ export class WsSocketService {
     if (clientSocket) clientSocket.push(client);
     else WsSocketService.ClientSocketMap.set(userId, [client]);
     WsSocketService.ClientJwtMap.set(clientId, jwtPayload);
+    WsSocketService.UserStatusMap.set(userId, 'chilling');
   }
 
   static removeUserFromSocketsMap(userId: number): void {
@@ -63,5 +64,6 @@ export class WsSocketService {
         socket.disconnect();
       }
     });
+    WsSocketService.UserStatusMap.delete(userId);
   }
 }

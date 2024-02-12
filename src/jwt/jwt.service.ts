@@ -4,24 +4,25 @@ import {JwtService as Jwt} from '@nestjs/jwt';
 import {WsException} from '@nestjs/websockets';
 import {JwtTokenPayload} from 'src/auth/interface';
 import {RefreshJwt} from './interface/refreshJwt';
+import {JwtData} from '../shared/HttpEndpoints/types';
 
 @Injectable()
 export class JwtService {
   private jwtRefreshSecret: string;
-  constructor(
-    private readonly jwt: Jwt,
-    private readonly config: ConfigService,
-  ) {
+  constructor(private readonly jwt: Jwt, private readonly config: ConfigService) {
     this.jwtRefreshSecret = this.config.getOrThrow('JWT_REFRESH_KEY');
   }
 
-  async createAuthToken(tokenData: JwtTokenPayload): Promise<string> {
-    return this.jwt.sign(tokenData);
+  async createAuthToken(tokenData: JwtTokenPayload): Promise<JwtData> {
+    const authToken = this.jwt.sign(tokenData);
+    const expiresAt = this.getJwtExpirationDate(authToken);
+    return {token: authToken, expiresAt};
   }
 
-  async createRefreshToken(tokenData: JwtTokenPayload): Promise<string> {
+  async createRefreshToken(tokenData: JwtTokenPayload): Promise<JwtData> {
     const refreshToken = this.jwt.sign(tokenData, {expiresIn: '7d', secret: this.jwtRefreshSecret});
-    return refreshToken;
+    const expiresAt = this.getJwtExpirationDate(refreshToken);
+    return {token: refreshToken, expiresAt};
   }
 
   async refreshAccessToken(refreshToken: string, authToken: string): Promise<RefreshJwt> {
@@ -36,6 +37,10 @@ export class JwtService {
     const newRefreshToken = await this.createRefreshToken(payload);
 
     return {authToken: newAuthToken, refreshToken: newRefreshToken};
+  }
+  private getJwtExpirationDate(token: string): number {
+    const payload = this.jwt.decode(token, {json: true});
+    return payload.exp * 1000;
   }
 
   decodeRefreshToken(refreshToken: string): JwtTokenPayload {
